@@ -1,0 +1,79 @@
+/* ContextMenu */
+.menu {
+  position: fixed;
+  z-index: 10000;
+  min-width: 180px;
+  max-width: 320px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: 10px;
+  padding: 4px 0;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45), 0 2px 8px rgba(0, 0, 0, 0.2);
+  animation: contextMenuIn 0.12s ease-out;
+}
+
+.divider {
+  height: 1px;
+  background: var(--border-subtle);
+  margin: 4px 8px;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 14px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: 13px;
+  transition: background 0.1s, color 0.1s;
+  border-radius: 4px;
+  margin: 0 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.item:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.itemDanger {
+  color: #EF4444;
+}
+
+.itemDanger:hover {
+  background: rgba(239, 68, 68, 0.1);
+  color: #F87171;
+}
+
+.itemDisabled {
+  cursor: default;
+  color: var(--text-disabled);
+}
+
+.itemDisabled:hover {
+  background: transparent;
+  color: var(--text-disabled);
+}
+
+.itemIcon {
+  font-size: 14px;
+  width: 18px;
+  text-align: center;
+}
+
+.itemFocused {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  outline: 1px solid var(--brand-primary);
+  outline-offset: -1px;
+}
+
+.itemShortcut {
+  font-size: 11px;
+  color: var(--text-disabled);
+  margin-left: 16px;
+  font-family: var(--font-mono, monospace);
+}

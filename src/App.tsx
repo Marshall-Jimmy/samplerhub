@@ -1,109 +1,181 @@
-import { useState } from 'react'
-import UpdateElectron from '@/components/update'
-import logoVite from './assets/logo-vite.svg'
-import logoElectron from './assets/logo-electron.svg'
-import logoTailwind from './assets/logo-tailwindcss.svg'
+import React, { useEffect } from 'react';
+import { ConfigProvider, theme } from 'antd';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { Toaster } from 'sonner';
+import Layout from './components/layout/Layout';
+import LibraryPage from './pages/LibraryPage';
+import ErrorBoundary from './components/ErrorBoundary';
+import { usePlayerStore } from './stores/playerStore';
+import { useLibraryStore } from './stores/libraryStore';
+import { useSettingsStore, ThemeName, THEME_COLORS, BuiltinThemeName } from './stores/settingsStore';
 
-function App() {
-  const [count, setCount] = useState(0)
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 5 * 60 * 1000,
+      refetchOnWindowFocus: false,
+    },
+  },
+});
+
+const App: React.FC = () => {
+  const currentTheme = useSettingsStore((s) => s.theme);
+
+  // 性能监控：首屏渲染时间
+  useEffect(() => {
+    const mountTime = performance.now();
+    console.log(`[Perf] App mounted: ${mountTime.toFixed(0)}ms`);
+
+    // 监控长任务
+    if (typeof PerformanceObserver !== 'undefined') {
+      try {
+        const obs = new PerformanceObserver((list) => {
+          for (const entry of list.getEntries()) {
+            if (entry.duration > 100) {
+              console.warn(`[Perf] Long task: ${entry.duration.toFixed(0)}ms`);
+            }
+          }
+        });
+        obs.observe({ type: 'longtask', buffered: true });
+        return () => obs.disconnect();
+      } catch { /* PerformanceObserver not available */ }
+    }
+  }, []);
+
+  // 全局错误捕获
+  useEffect(() => {
+    const handleUnhandledRejection = (e: PromiseRejectionEvent) => {
+      console.error('[Unhandled Rejection]', e.reason);
+    };
+    window.addEventListener('unhandledrejection', handleUnhandledRejection);
+    return () => window.removeEventListener('unhandledrejection', handleUnhandledRejection);
+  }, []);
+
+  // 应用主题到 document
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', currentTheme);
+  }, [currentTheme]);
+
+  const isLightTheme = ['light', 'lavender', 'sakura', 'mint', 'sand'].includes(currentTheme);
+
+  const primaryColor = THEME_COLORS[currentTheme as BuiltinThemeName]?.primary || '#6366F1';
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      const isInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
+
+      // Ctrl+F: 聚焦搜索
+      if (e.ctrlKey && e.key === 'f') {
+        e.preventDefault();
+        const searchInput = document.querySelector('input[placeholder*="搜索"]') as HTMLInputElement;
+        if (searchInput) searchInput.focus();
+        return;
+      }
+
+      // Space: 播放/暂停（不在输入框时）
+      if (e.key === ' ' && !isInput) {
+        e.preventDefault();
+        const { isPlaying, pause, resume, currentSampleId } = usePlayerStore.getState();
+        if (currentSampleId) {
+          if (isPlaying) pause();
+          else resume();
+        }
+        return;
+      }
+
+      // Ctrl+Left: 上一曲
+      if (e.ctrlKey && e.key === 'ArrowLeft') {
+        e.preventDefault();
+        usePlayerStore.getState().playPrev();
+        return;
+      }
+
+      // Ctrl+Right: 下一曲
+      if (e.ctrlKey && e.key === 'ArrowRight') {
+        e.preventDefault();
+        usePlayerStore.getState().playNext();
+        return;
+      }
+
+      // Ctrl+Up: 音量增大
+      if (e.ctrlKey && e.key === 'ArrowUp') {
+        e.preventDefault();
+        const { volume, setVolume } = usePlayerStore.getState();
+        setVolume(Math.min(1, volume + 0.05));
+        return;
+      }
+
+      // Ctrl+Down: 音量减小
+      if (e.ctrlKey && e.key === 'ArrowDown') {
+        e.preventDefault();
+        const { volume, setVolume } = usePlayerStore.getState();
+        setVolume(Math.max(0, volume - 0.05));
+        return;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   return (
-    <div className='relative min-h-screen overflow-hidden bg-slate-50 px-4 py-8 text-slate-900 sm:px-6 lg:px-8'>
-      <div className='pointer-events-none absolute inset-0'>
-        <div className='absolute -left-28 top-10 h-96 w-96 rounded-full bg-cyan-200/50 blur-3xl' />
-        <div className='absolute -right-24 top-28 h-96 w-96 rounded-full bg-sky-200/40 blur-3xl' />
-        <div className='absolute bottom-0 left-1/2 h-72 w-[46rem] -translate-x-1/2 bg-gradient-to-r from-cyan-200/0 via-cyan-300/45 to-cyan-200/0 blur-3xl' />
-      </div>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <ConfigProvider
+        theme={{
+          algorithm: isLightTheme ? theme.defaultAlgorithm : theme.darkAlgorithm,
+          token: {
+            colorPrimary: primaryColor,
+            colorBgContainer: isLightTheme ? '#F1F3F5' : '#1C1C21',
+            colorBgElevated: isLightTheme ? '#FFFFFF' : '#141417',
+            colorText: isLightTheme ? '#212529' : '#F0F0F3',
+            colorTextSecondary: isLightTheme ? '#495057' : '#A0A0AB',
+            colorBorder: isLightTheme ? '#DEE2E6' : '#2A2A32',
+            borderRadius: 8,
+            fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+            fontSize: 13,
+          },
+          components: {
+            Menu: {
+              darkItemBg: 'transparent',
+              darkItemColor: '#A0A0AB',
+              darkItemSelectedBg: '#25252D',
+              darkItemSelectedColor: '#F0F0F3',
+              darkItemHoverBg: '#1C1C21',
+            },
+            Input: {
+              colorBgContainer: isLightTheme ? '#F1F3F5' : '#1C1C21',
+              colorBorder: isLightTheme ? '#DEE2E6' : '#2A2A32',
+              activeBorderColor: primaryColor,
+              hoverBorderColor: isLightTheme ? '#CED4DA' : '#3A3A44',
+            },
+            Button: {
+              colorPrimary: primaryColor,
+              colorPrimaryHover: primaryColor,
+            },
+          },
+        }}
+      >
+        <Layout>
+          <LibraryPage />
+        </Layout>
+        <Toaster
+          position="bottom-right"
+          toastOptions={{
+            duration: 3000,
+            style: {
+              background: 'var(--bg-elevated)',
+              color: 'var(--text-primary)',
+              border: '1px solid var(--border-default)',
+              borderRadius: 'var(--radius-md)',
+              fontSize: 13,
+            },
+          }}
+        />
+      </ConfigProvider>
+      </QueryClientProvider>
+    </ErrorBoundary>
+  );
+};
 
-      <div className='relative mx-auto flex w-full max-w-6xl flex-col gap-8'>
-        <section className='overflow-hidden rounded-[2rem] border border-slate-200 bg-white/90 shadow-[0_24px_70px_-40px_rgba(14,116,144,0.35)] backdrop-blur'>
-          <div className='grid gap-8 p-6 md:grid-cols-[1.15fr_0.85fr] md:p-10'>
-            <div className='flex flex-col justify-between gap-8'>
-              <div className='space-y-6'>
-                <div className='inline-flex items-center gap-2 rounded-full border border-cyan-200 bg-cyan-50 px-4 py-1.5 text-xs font-medium uppercase tracking-[0.24em] text-cyan-800'>
-                  Electron + Vite + React + Tailwind
-                </div>
-                <div className='space-y-4'>
-                  <h1 className='max-w-xl text-4xl font-semibold tracking-tight text-slate-900 sm:text-5xl'>
-                    Modern starter, cleaner rhythm, unified visual language.
-                  </h1>
-                  <p className='max-w-2xl text-base leading-7 text-slate-600 sm:text-lg'>
-                    Refined spacing, balanced contrast, and consistent cards make the page feel more polished while keeping all demo functionality intact.
-                  </p>
-                </div>
-              </div>
-
-              <a
-                href='https://github.com/electron-vite/electron-vite-react'
-                target='_blank'
-                rel='noreferrer'
-                className='group inline-flex w-fit items-center gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition-all hover:border-cyan-300 hover:shadow-md'
-              >
-                <span className='relative flex h-10 w-10 items-center justify-center'>
-                  <img src={logoVite} className='h-8 w-8' alt='Vite logo' />
-                  <img
-                    src={logoElectron}
-                    className='absolute h-8 w-8 motion-safe:animate-spin [animation-duration:20s]'
-                    alt='Electron logo'
-                  />
-                </span>
-                <span className='pr-2 text-sm font-semibold text-slate-700 transition-colors group-hover:text-cyan-700'>
-                  Open project repository
-                </span>
-              </a>
-            </div>
-
-            <div className='relative overflow-hidden rounded-[1.75rem] border border-slate-200 bg-gradient-to-br from-cyan-50 to-white p-6'>
-              <div className='pointer-events-none absolute -right-8 -top-8 h-28 w-28 rounded-full bg-cyan-200/60 blur-2xl' />
-              <div className='relative space-y-4'>
-                <div className='flex items-center justify-between'>
-                  <div className='text-sm uppercase tracking-[0.3em] text-slate-500'>Counter demo</div>
-                  <img src={logoTailwind} className='h-6 w-6 opacity-90' alt='Tailwind CSS logo' />
-                </div>
-                <div className='text-5xl font-semibold text-slate-900'>{count}</div>
-                <button
-                  onClick={() => setCount((value) => value + 1)}
-                  className='inline-flex items-center justify-center rounded-2xl bg-cyan-500 px-5 py-3 font-semibold text-white transition hover:bg-cyan-600 focus:outline-none focus:ring-2 focus:ring-cyan-300 focus:ring-offset-2 focus:ring-offset-white'
-                >
-                  Increment counter
-                </button>
-                <p className='text-sm leading-6 text-slate-600'>
-                  Edit <code>src/App.tsx</code> and save to test HMR.
-                </p>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section className='grid gap-4 md:grid-cols-3'>
-          <div className='rounded-3xl border border-slate-200 bg-white p-6 text-slate-800 shadow-[0_18px_36px_-28px_rgba(15,23,42,0.35)]'>
-            <div className='text-sm uppercase tracking-[0.3em] text-slate-500'>Public assets</div>
-            <p className='mt-3 text-base leading-7'>
-              Place static files into the <code>/public</code> folder.
-            </p>
-          </div>
-
-          <div className='rounded-3xl border border-cyan-200 bg-gradient-to-br from-cyan-50 to-sky-50 p-6 text-slate-800 shadow-[0_18px_36px_-28px_rgba(14,116,144,0.4)]'>
-            <div className='flex items-center gap-2 text-sm uppercase tracking-[0.3em] text-cyan-700'>
-              <img src={logoTailwind} className='h-5 w-5' alt='Tailwind CSS logo' />
-              Tailwind system
-            </div>
-            <p className='mt-3 text-base leading-7 text-slate-700'>
-              Unified utility classes now drive layout, hierarchy, and component consistency across the app.
-            </p>
-          </div>
-
-          <div className='rounded-3xl border border-slate-200 bg-white p-6 text-slate-800 shadow-[0_18px_36px_-28px_rgba(15,23,42,0.35)]'>
-            <div className='text-sm uppercase tracking-[0.3em] text-slate-500'>Update panel</div>
-            <p className='mt-3 text-base leading-7'>
-              Built-in updater UI follows the same spacing and typography rules for a more harmonious experience.
-            </p>
-          </div>
-        </section>
-
-        <UpdateElectron />
-      </div>
-    </div>
-  )
-}
-
-export default App
+export default App;

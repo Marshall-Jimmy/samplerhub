@@ -1,0 +1,210 @@
+/* TagManager */
+.panel {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 200;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  padding: 16px;
+  box-shadow: var(--shadow-lg);
+  min-width: 260px;
+  max-width: 320px;
+}
+
+.panelAlignRight {
+  left: auto;
+  right: 0;
+}
+
+/* Header */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.headerTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.closeBtn {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: var(--text-tertiary);
+  padding: 2px;
+  display: flex;
+  align-items: center;
+}
+
+/* Tag list */
+.tagList {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.emptyHint {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  padding: 8px 0;
+}
+
+.tagItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.tagItem:hover {
+  background: var(--bg-hover);
+}
+
+.tagItemSelected:hover {
+  /* keep selected bg */
+}
+
+.tagCheck {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  border: 2px solid;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.tagCheckSelected {
+  border: none;
+}
+
+.tagName {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  flex: 1;
+}
+
+.deleteBtn {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: var(--text-tertiary);
+  padding: 2px;
+  display: flex;
+  align-items: center;
+  opacity: 0.5;
+  transition: opacity 0.12s ease;
+}
+
+.deleteBtn:hover {
+  opacity: 1;
+}
+
+/* Create section */
+.createSection {
+  border-top: 1px solid var(--border-subtle);
+  padding-top: 12px;
+}
+
+.createInput {
+  width: 100%;
+  padding: 6px 10px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-default);
+  background: var(--bg-default);
+  color: var(--text-primary);
+  font-size: 12px;
+  outline: none;
+  margin-bottom: 8px;
+  box-sizing: border-box;
+}
+
+.colorPicker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.colorBtn {
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  cursor: pointer;
+  padding: 0;
+  transition: border-color 0.12s ease;
+}
+
+.createActions {
+  display: flex;
+  gap: 8px;
+}
+
+.createBtn {
+  flex: 1;
+  padding: 6px 12px;
+  border-radius: var(--radius-md);
+  border: none;
+  background: var(--bg-hover);
+  color: var(--text-tertiary);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: default;
+  transition: all 0.12s ease;
+}
+
+.createBtnEnabled {
+  background: var(--brand-primary);
+  color: #fff;
+  cursor: pointer;
+}
+
+.cancelBtn {
+  padding: 6px 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-default);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+/* Add button */
+.addBtn {
+  width: 100%;
+  padding: 6px 12px;
+  border-radius: var(--radius-md);
+  border: 1px dashed var(--border-default);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  transition: all 0.12s ease;
+}
+
+.addBtn:hover {
+  border-color: var(--brand-primary);
+  color: var(--brand-primary);
+}

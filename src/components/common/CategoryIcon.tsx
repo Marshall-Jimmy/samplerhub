@@ -1,0 +1,158 @@
+import React from 'react';
+import {
+  IconDeviceAudioTape,
+  IconMusic,
+  IconDisc,
+  IconSparkles,
+  IconCircleDotted,
+  IconCircleHalf,
+  IconWaveSine,
+  IconWaveSquare,
+  IconSettings,
+  IconMicrophone,
+  IconUsers,
+  IconTrendingUp,
+  IconBolt,
+  IconTrendingDown,
+  IconArrowsShuffle,
+  IconSquareFilled,
+  IconRotateClockwise,
+  IconLayoutGrid,
+  IconCloud,
+  IconCircleFilled,
+  IconRepeat,
+  IconCircle,
+  IconPlayerTrackNext,
+  IconArrowsLeftRight,
+  IconArrowDown,
+  IconStar,
+  IconListNumbers,
+  IconHandClick,
+  IconClock,
+  IconTrash,
+  IconHelpCircle,
+  IconUser,
+  IconBrain,
+  IconFolder,
+} from '@tabler/icons-react';
+
+import type { Icon } from '@tabler/icons-react';
+
+// key (lowercase) → Tabler icon component
+const iconMap: Record<string, Icon> = {
+  kick: IconDeviceAudioTape,
+  snare: IconMusic,
+  hihat: IconDisc,
+  clap: IconSparkles,
+  tom: IconCircleDotted,
+  crash: IconDisc,
+  ride: IconDisc,
+  rim: IconCircleHalf,
+  bass: IconWaveSine,
+  sub: IconWaveSquare,
+  synth: IconSettings,
+  keys: IconMusic,
+  piano: IconMusic,
+  guitar: IconMusic,
+  vocal: IconMicrophone,
+  choir: IconUsers,
+  adlib: IconTrendingUp,
+  fx: IconSparkles,
+  impact: IconBolt,
+  riser: IconTrendingUp,
+  downlifter: IconTrendingDown,
+  sweep: IconArrowsShuffle,
+  glitch: IconSquareFilled,
+  reverse: IconRotateClockwise,
+  texture: IconLayoutGrid,
+  ambience: IconCloud,
+  foley: IconCircleFilled,
+  loop: IconRepeat,
+  oneshot: IconCircle,
+  fill: IconPlayerTrackNext,
+  transition: IconArrowsLeftRight,
+  buildup: IconTrendingUp,
+  breakdown: IconTrendingDown,
+  drop: IconArrowDown,
+  lead: IconStar,
+  pad: IconCloud,
+  arp: IconListNumbers,
+  chord: IconMusic,
+  stab: IconBolt,
+  pluck: IconHandClick,
+  all: IconLayoutGrid,
+  favorites: IconStar,
+  recent: IconClock,
+  trash: IconTrash,
+  uncategorized: IconHelpCircle,
+  user: IconUser,
+  smart: IconBrain,
+};
+
+// Category display name (with spaces, caps) → lowercase key
+const nameToKey: Record<string, string> = {
+  'Kick': 'kick',
+  'Snare': 'snare',
+  'Hi-Hat': 'hihat',
+  'Open Hat': 'hihat',
+  'Clap': 'clap',
+  'Rim': 'rim',
+  'Tom': 'tom',
+  'Crash': 'crash',
+  'Ride': 'ride',
+  'Bass': 'bass',
+  '808 Bass': 'bass',
+  'Sub': 'sub',
+  'Synth': 'synth',
+  'Keys': 'keys',
+  'Piano': 'piano',
+  'Guitar': 'guitar',
+  'Vocal': 'vocal',
+  'Choir': 'choir',
+  'Adlib': 'adlib',
+  'FX': 'fx',
+  'Impact': 'impact',
+  'Riser': 'riser',
+  'Downlifter': 'downlifter',
+  'Sweep': 'sweep',
+  'Glitch': 'glitch',
+  'Reverse': 'reverse',
+  'Texture': 'texture',
+  'Ambience': 'ambience',
+  'Foley': 'foley',
+  'Loop': 'loop',
+  'Drum Loop': 'loop',
+  'Top Loop': 'loop',
+  'One Shot': 'oneshot',
+  'Fill': 'fill',
+  'Transition': 'transition',
+  'Buildup': 'buildup',
+  'Breakdown': 'breakdown',
+  'Drop': 'drop',
+  'Lead': 'lead',
+  'Pad': 'pad',
+  'Arp': 'arp',
+  'Chord': 'chord',
+  'Stab': 'stab',
+  'Pluck': 'pluck',
+  'Percussion': 'rim',
+  'Shaker': 'hihat',
+  'Uncategorized': 'uncategorized',
+};
+
+interface CategoryIconProps {
+  name: string;
+  size?: number;
+  stroke?: number;
+  color?: string;
+}
+
+const CategoryIcon: React.FC<CategoryIconProps> = ({ name, size = 16, stroke = 1.5, color }) => {
+  const key = nameToKey[name] || name.toLowerCase();
+  const Icon = iconMap[key];
+  if (!Icon) return <IconFolder size={size} stroke={stroke} color={color} />;
+  return <Icon size={size} stroke={stroke} color={color} />;
+};
+
+export default CategoryIcon;
+export { iconMap, nameToKey };

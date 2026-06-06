@@ -1,42 +1,77 @@
 {
   "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
-  "appId": "YourAppID",
+  "appId": "com.jima.samplerhub",
+  "productName": "Jima's SamplerHub",
+  "copyright": "Copyright © 2024 Jima",
+  "icon": "build/icon.ico",
   "asar": true,
+  "asarUnpack": [
+    "node_modules/better-sqlite3/**/*.node",
+    "node_modules/better-sqlite3/prebuilds/**/*"
+  ],
   "directories": {
     "output": "release/${version}"
   },
   "files": [
     "dist-electron",
-    "dist"
+    "dist",
+    "package.json"
   ],
+  "extraResources": [
+    {
+      "from": "build/icon.png",
+      "to": "icon.png"
+    }
+  ],
+  "electronDist": "electron-dist",
   "mac": {
+    "icon": "build/icon.icns",
     "artifactName": "${productName}_${version}.${ext}",
     "target": [
-      "dmg",
-      "zip"
-    ]
+      {
+        "target": "dmg",
+        "arch": [
+          "x64",
+          "arm64"
+        ]
+      },
+      {
+        "target": "zip",
+        "arch": [
+          "x64",
+          "arm64"
+        ]
+      }
+    ],
+    "category": "public.app-category.music"
   },
   "win": {
+    "icon": "build/icon.ico",
     "target": [
       {
         "target": "nsis",
         "arch": [
           "x64"
         ]
+      },
+      {
+        "target": "portable",
+        "arch": [
+          "x64"
+        ]
       }
-    ],
-    "artifactName": "${productName}_${version}.${ext}"
+    ]
   },
   "nsis": {
     "oneClick": false,
     "perMachine": false,
     "allowToChangeInstallationDirectory": true,
-    "deleteAppDataOnUninstall": false
+    "deleteAppDataOnUninstall": false,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "artifactName": "${productName}_${version}_Setup.${ext}"
   },
-  "publish": {
-    "provider": "github",
-    "owner": "electron-vite",
-    "repo": "electron-vite-react",
-    "releaseType": "release"
+  "portable": {
+    "artifactName": "${productName}_${version}_Portable.${ext}"
   }
 }

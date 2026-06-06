@@ -1,0 +1,436 @@
+/* ── PlayerBar ──────────────────────────────── */
+.playerBar {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  padding: 0 24px;
+  gap: 20px;
+}
+
+/* Transport Controls */
+.transport {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.controlBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  cursor: pointer;
+  background: transparent;
+  color: var(--text-secondary);
+  transition: all 0.15s ease;
+  padding: 0;
+}
+
+.controlBtn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.controlBtn:focus-visible {
+  outline: 2px solid var(--brand-primary);
+  outline-offset: 2px;
+}
+
+.controlSmall {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+}
+
+.playBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  background: var(--brand-primary);
+  color: #fff;
+  font-size: 18px;
+  box-shadow: 0 0 16px rgba(99, 102, 241, 0.35);
+  transition: all 0.15s ease;
+  padding: 0;
+}
+
+.playBtn:hover {
+  box-shadow: 0 0 24px rgba(99, 102, 241, 0.5);
+}
+
+.playBtn:focus-visible {
+  outline: 2px solid var(--brand-accent);
+  outline-offset: 3px;
+}
+
+/* Center: Waveform + Time */
+.waveformArea {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  position: relative;
+}
+
+.sampleName {
+  font-size: 12px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 3px 0;
+  line-height: 1.4;
+}
+
+.waveformContainer {
+  position: relative;
+}
+
+.waveformCanvas {
+  width: 100%;
+  height: 36px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: block;
+}
+
+.hoverTooltip {
+  position: absolute;
+  top: -24px;
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  pointer-events: none;
+  white-space: nowrap;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  z-index: 10;
+}
+
+.timeDisplay {
+  display: flex;
+  justify-content: space-between;
+}
+
+.timeLabel {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Right: Volume + Controls */
+.rightControls {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-shrink: 0;
+}
+
+.loopBtn {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  color: var(--text-secondary);
+  background: transparent;
+}
+
+.loopBtnActive {
+  color: var(--brand-accent);
+  background: rgba(34, 211, 238, 0.12);
+}
+
+.loopBtnActive:hover {
+  background: rgba(34, 211, 238, 0.18);
+  color: var(--brand-accent);
+}
+
+/* A-B Loop */
+.abLoop {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 1;
+  transform: scale(1);
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.abBtn {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  background: transparent;
+}
+
+.abBtnActive {
+  color: #6366F1;
+  background: rgba(99, 102, 241, 0.12);
+}
+
+.abBtnActive:hover {
+  background: rgba(99, 102, 241, 0.18);
+  color: #6366F1;
+}
+
+/* Playback Rate */
+.rateSelect {
+  width: 52px;
+  height: 28px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  outline: none;
+  text-align: center;
+  appearance: none;
+  -webkit-appearance: none;
+  background: var(--bg-active);
+  color: var(--text-secondary);
+  transition: all 0.15s ease, opacity 0.25s ease, transform 0.25s ease;
+  opacity: 1;
+  transform: scale(1);
+}
+
+.rateSelectActive {
+  background: rgba(99, 102, 241, 0.12);
+  color: #6366F1;
+  border-color: rgba(99, 102, 241, 0.3);
+}
+
+.rateSelect:focus-visible {
+  border-color: var(--brand-primary);
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15);
+}
+
+/* Volume */
+.volumeControl {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  opacity: 1;
+  transform: scale(1);
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.volumeIcon {
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.volumeSlider {
+  width: 80px;
+  height: 4px;
+  appearance: none;
+  -webkit-appearance: none;
+  background: var(--bg-active);
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+}
+
+.volumeSlider::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--brand-primary);
+  cursor: pointer;
+  border: none;
+  box-shadow: 0 0 4px rgba(99, 102, 241, 0.3);
+}
+
+.volumeSlider:focus-visible {
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15);
+}
+
+/* ── Loop Menu (dropdown) ─────────────────── */
+.loopMenu {
+  position: relative;
+}
+
+.loopDropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md, 8px);
+  padding: 6px;
+  min-width: 140px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  z-index: 100;
+  opacity: 0;
+  transform: translateY(-4px) scale(0.95);
+  pointer-events: none;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.loopDropdownOpen {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
+
+.loopDropdownItem {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.loopDropdownBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  background: transparent;
+  color: var(--text-secondary);
+  transition: all 0.15s ease;
+  padding: 0;
+}
+
+.loopDropdownBtn span {
+  font-weight: 500;
+  font-size: 12px;
+  width: auto;
+  padding: 0 4px;
+}
+
+.loopDropdownBtn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.loopDropdownBtnActive {
+  color: #6366F1;
+  background: rgba(99, 102, 241, 0.12);
+}
+
+.loopDropdownBtnActive:hover {
+  background: rgba(99, 102, 241, 0.18);
+  color: #6366F1;
+}
+
+.loopDropdownDivider {
+  height: 1px;
+  background: var(--border-subtle);
+  margin: 4px 0;
+}
+
+/* ── Responsive: Compact (900-1024px) ──────── */
+@media (max-width: 1024px) {
+  .playerBar {
+    padding: 0 16px;
+    gap: 12px;
+  }
+
+  .abLoop {
+    opacity: 0;
+    transform: scale(0.8);
+    pointer-events: none;
+    width: 0;
+    overflow: hidden;
+    margin: 0;
+    gap: 0;
+  }
+
+  .rateSelect {
+    width: 44px;
+    height: 26px;
+    font-size: 10px;
+  }
+
+  .waveformCanvas {
+    height: 28px;
+  }
+
+  .volumeSlider {
+    width: 60px;
+  }
+}
+
+/* ── Responsive: Narrow (768-900px) ────────── */
+@media (max-width: 900px) {
+  .playerBar {
+    padding: 0 12px;
+    gap: 10px;
+  }
+
+  .volumeControl {
+    opacity: 0;
+    transform: scale(0.8);
+    pointer-events: none;
+    width: 0;
+    overflow: hidden;
+    margin: 0;
+    gap: 0;
+  }
+
+  .loopBtn {
+    width: 30px;
+    height: 30px;
+  }
+
+  .waveformCanvas {
+    height: 26px;
+  }
+}
+
+/* ── Responsive: Mini (< 768px) ────────────── */
+@media (max-width: 768px) {
+  .playerBar {
+    padding: 0 12px;
+    gap: 8px;
+  }
+
+  .waveformArea {
+    opacity: 0;
+    transform: scale(0.95);
+    pointer-events: none;
+    width: 0;
+    overflow: hidden;
+    margin: 0;
+  }
+
+  .rightControls {
+    opacity: 0;
+    transform: scale(0.8);
+    pointer-events: none;
+    width: 0;
+    overflow: hidden;
+    margin: 0;
+    gap: 0;
+  }
+
+  .playBtn {
+    width: 36px;
+    height: 36px;
+    font-size: 16px;
+  }
+
+  .controlSmall {
+    width: 28px;
+    height: 28px;
+    font-size: 12px;
+  }
+}

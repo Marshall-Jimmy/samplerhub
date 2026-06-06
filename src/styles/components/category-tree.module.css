@@ -1,0 +1,168 @@
+/* ── CategoryTree ────────────────────────────── */
+.tree {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.treeHeader {
+  padding: 8px 12px 6px;
+}
+
+.treeLabel {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-tertiary);
+}
+
+/* Group header (collapsible section) */
+.groupHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px 4px;
+  cursor: pointer;
+  user-select: none;
+  border-radius: var(--radius-md);
+  transition: background 0.12s ease;
+}
+
+.groupHeader:hover {
+  background: var(--bg-hover);
+}
+
+.groupArrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  font-size: 10px;
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+
+.node {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  transition: background 0.12s ease;
+  position: relative;
+  text-align: left;
+  font-size: inherit;
+  font-family: inherit;
+  color: inherit;
+}
+
+.node:hover {
+  background: var(--bg-hover);
+}
+
+.node:focus-visible {
+  outline: 2px solid var(--brand-primary);
+  outline-offset: -2px;
+}
+
+.nodeActive {
+  background: var(--bg-hover);
+}
+
+.nodeActive:hover {
+  background: var(--bg-hover);
+}
+
+/* Active indicator bar */
+.activeIndicator {
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--node-color, var(--brand-accent));
+}
+
+/* Expand arrow */
+.expandArrow {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  color: var(--text-tertiary);
+  font-size: 10px;
+  transition: transform 0.15s ease;
+}
+
+.expandArrowExpanded {
+  transform: rotate(90deg);
+}
+
+.expandSpacer {
+  flex-shrink: 0;
+  width: 20px;
+}
+
+/* Icon */
+.nodeIcon {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  background: transparent;
+  transition: background 0.12s ease;
+}
+
+.nodeActive .nodeIcon {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+/* Fallback dot */
+.nodeDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: block;
+}
+
+/* Name */
+.nodeName {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.nodeActive .nodeName {
+  color: var(--text-primary);
+}
+
+/* Node count (for folder tree) */
+.nodeCount {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+  min-width: 20px;
+  text-align: right;
+}
+
+/* Children container */
+.children {
+  overflow: hidden;
+}
