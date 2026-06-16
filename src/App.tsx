@@ -1,4 +1,4 @@
-import React, { useEffect, lazy, Suspense, useState } from 'react';
+import React, { useEffect, lazy, Suspense, useState, useCallback } from 'react';
 import { ConfigProvider, theme } from 'antd';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'sonner';
@@ -6,6 +6,7 @@ import Layout from './components/layout/Layout';
 import LibraryPage from './pages/LibraryPage';
 import ErrorBoundary from './components/ErrorBoundary';
 import AppLoader from './components/common/AppLoader';
+import Onboarding from './components/onboarding/Onboarding';
 import { usePlayerStore } from './stores/playerStore';
 import { useLibraryStore } from './stores/libraryStore';
 import { useSettingsStore, ThemeName, THEME_COLORS, BuiltinThemeName } from './stores/settingsStore';
@@ -38,8 +39,11 @@ const isToolWindow = toolType !== 'main';
 
 const App: React.FC = () => {
   const currentTheme = useSettingsStore((s) => s.theme);
+  const hasCompletedOnboarding = useSettingsStore((s) => s.hasCompletedOnboarding);
   const [isReady, setIsReady] = useState(false);
   const [loaderDone, setLoaderDone] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [onboardingChecked, setOnboardingChecked] = useState(false);
 
   // 启动加载流程：预加载采样数据 + Mod 初始化
   useEffect(() => {
@@ -62,6 +66,46 @@ const App: React.FC = () => {
     }, 600);
 
     return () => clearTimeout(minTimer);
+  }, []);
+
+  // Onboarding 检测：已完成 → 跳过；DB 有数据 → 跳过；否则显示引导
+  useEffect(() => {
+    if (!isReady) return;
+
+    const checkOnboarding = async () => {
+      // 已完成过 onboarding，直接跳过
+      if (hasCompletedOnboarding) {
+        setOnboardingChecked(true);
+        return;
+      }
+
+      // 检查 DB 中是否有样本数据（老用户直接跳过）
+      try {
+        const result = await ipcClient.searchSamples({
+          query: '', categoryId: undefined, tagIds: [], key: '',
+          bpmMin: 0, bpmMax: 300, durationMin: 0, durationMax: 60,
+          sortField: 'fileName', sortDirection: 'asc',
+        });
+        if (result.total > 0) {
+          // 有数据的老用户，标记完成并跳过
+          useSettingsStore.getState().setHasCompletedOnboarding(true);
+          setOnboardingChecked(true);
+          return;
+        }
+      } catch {
+        // 查询失败，继续显示 onboarding
+      }
+
+      // 新用户，显示 onboarding
+      setShowOnboarding(true);
+      setOnboardingChecked(true);
+    };
+
+    checkOnboarding();
+  }, [isReady, hasCompletedOnboarding]);
+
+  const handleOnboardingComplete = useCallback(() => {
+    setShowOnboarding(false);
   }, []);
 
   // 性能监控：首屏渲染时间
@@ -306,9 +350,12 @@ const App: React.FC = () => {
             {toolType === 'sequencer' && <SequencerPage />}
           </Suspense>
         ) : (
-          <Layout>
-            <LibraryPage />
-          </Layout>
+          <>
+            {showOnboarding && <Onboarding onComplete={handleOnboardingComplete} />}
+            <Layout>
+              <LibraryPage />
+            </Layout>
+          </>
         )}
         <Toaster
           position="bottom-right"

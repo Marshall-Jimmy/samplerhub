@@ -164,6 +164,7 @@ interface SettingsState {
   freesoundApiKey: string;
   pixabayApiKey: string;
   onlineDownloadFolder: string;
+  hasCompletedOnboarding: boolean;
 
   setVolume: (volume: number) => void;
   setAutoPlayNext: (enabled: boolean) => void;
@@ -180,6 +181,7 @@ interface SettingsState {
   setFreesoundApiKey: (key: string) => void;
   setPixabayApiKey: (key: string) => void;
   setOnlineDownloadFolder: (folder: string) => void;
+  setHasCompletedOnboarding: (completed: boolean) => void;
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -195,6 +197,7 @@ export const useSettingsStore = create<SettingsState>()(
       freesoundApiKey: '',
       pixabayApiKey: '',
       onlineDownloadFolder: '',
+      hasCompletedOnboarding: false,
 
       setVolume: (volume) => set({ volume }),
       setAutoPlayNext: (enabled) => set({ autoPlayNext: enabled }),
@@ -250,6 +253,7 @@ export const useSettingsStore = create<SettingsState>()(
       setFreesoundApiKey: (key) => set({ freesoundApiKey: key }),
       setPixabayApiKey: (key) => set({ pixabayApiKey: key }),
       setOnlineDownloadFolder: (folder) => set({ onlineDownloadFolder: folder }),
+      setHasCompletedOnboarding: (completed) => set({ hasCompletedOnboarding: completed }),
     }),
     {
       name: 'samplerhub-settings',
