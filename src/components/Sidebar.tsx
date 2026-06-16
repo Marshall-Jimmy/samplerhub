@@ -31,9 +31,12 @@ interface SidebarProps {
   onNavigateLibrary?: () => void;
 }
 
+const COMPACT_HEIGHT = 720; // 低于此高度进入紧凑模式
+
 const Sidebar: React.FC<SidebarProps> = ({ collapsed = false, onOpenOnline, onNavigateLibrary }) => {
   const { t } = useTranslation();
   const [activeSection, setActiveSection] = useState<string>('library');
+  const [isCompact, setIsCompact] = useState(false);
   const onlineSampleEnabled = useSettingsStore(s => s.onlineSampleEnabled);
   const appMode = useProfileStore(s => s.appMode);
   const { setActiveSection: setStoreSection, setScanning } = useLibraryStore();
@@ -60,6 +63,16 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed = false, onOpenOnline, onNa
       setSmartFolders(folders || []);
     }).catch(() => {});
   }, [fetchPlaylists]);
+
+  // 检测窗口高度，低高度时进入紧凑模式
+  useEffect(() => {
+    const checkHeight = () => {
+      setIsCompact(window.innerHeight < COMPACT_HEIGHT);
+    };
+    checkHeight();
+    window.addEventListener('resize', checkHeight);
+    return () => window.removeEventListener('resize', checkHeight);
+  }, []);
 
   const handleAddFolder = useCallback(async () => {
     try {
@@ -289,155 +302,163 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed = false, onOpenOnline, onNa
         )}
       </div>
 
-      {/* Smart Folders Section */}
-      <div className={s.playlistsSection}>
-        <div className={s.playlistsHeader}>
-          <span className={s.sectionLabel}>{t('sidebar.smartFolders')}</span>
-          <button
-            onClick={() => setShowSmartFolderModal(true)}
-            className={`${s.iconBtn} ${s.iconBtnSmall}`}
-            title={t('sidebar.newSmartFolder')}
-          >
-            <PlusOutlined />
-          </button>
-        </div>
-
-        <div className={s.playlistList}>
-          {smartFolders.map(folder => {
-            const isActive = activeSection === 'smartFolder' && useLibraryStore.getState().activeSmartFolderId === folder.id;
-            return (
-              <div
-                key={folder.id}
-                onClick={() => handleSelectSmartFolder(folder.id)}
-                className={`${s.playlistItem} ${isActive ? s.playlistItemActive : ''}`}
-              >
-                <SearchOutlined style={{ fontSize: 12, color: folder.color || '#10B981' }} />
-                <span className={s.playlistName}>{folder.name}</span>
-                <div className={s.playlistActions}>
-                  <button
-                    onClick={(e) => handleDeleteSmartFolder(e, folder.id)}
-                    className={s.actionBtn}
-                    title={t('sidebar.deleteSmartFolder')}
-                  >
-                    <DeleteOutlined />
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-          {smartFolders.length === 0 && (
-            <div className={s.emptyHint} onClick={() => setShowSmartFolderModal(true)}>
-              {t('sidebar.noSmartFolders')}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Playlists Section */}
-      <div className={s.playlistsSection}>
-        <div className={s.playlistsHeader}>
-          <span className={s.sectionLabel}>{t('sidebar.playlists')}</span>
-          <button
-            onClick={handleCreatePlaylist}
-            className={`${s.iconBtn} ${s.iconBtnSmall}`}
-            title={t('sidebar.newPlaylist')}
-          >
-            <PlusOutlined />
-          </button>
-        </div>
-
-        <div className={s.playlistList}>
-          {playlists.map(playlist => {
-            const isActive = activePlaylistId === playlist.id && activeSection === 'playlist';
-            const isEditing = editingId === playlist.id;
-
-            return (
-              <div
-                key={playlist.id}
-                onClick={() => handleSelectPlaylist(playlist.id)}
-                className={`${s.playlistItem} ${isActive ? s.playlistItemActive : ''}`}
-              >
-                <span
-                  className={s.playlistDot}
-                  style={{ background: playlist.coverColor || '#6366F1' }}
-                />
-
-                {isEditing ? (
-                  <input
-                    value={editingName}
-                    onChange={e => setEditingName(e.target.value)}
-                    onBlur={() => handleFinishEdit(playlist.id)}
-                    onKeyDown={e => { if (e.key === 'Enter') handleFinishEdit(playlist.id); }}
-                    onClick={e => e.stopPropagation()}
-                    autoFocus
-                    className={s.playlistEditInput}
-                  />
-                ) : (
-                  <span className={s.playlistName}>
-                    {playlist.name}
-                  </span>
-                )}
-
-                <span className={s.playlistCount}>
-                  {playlist.itemCount || 0}
-                </span>
-
-                <div className={s.playlistActions}>
-                  <button
-                    onClick={(e) => handleStartEdit(e, playlist)}
-                    className={s.actionBtn}
-                    title={t('sidebar.rename')}
-                  >
-                    <EditOutlined />
-                  </button>
-                  <button
-                    onClick={(e) => handleExportPlaylist(e, playlist.id)}
-                    className={s.actionBtn}
-                    title={t('sidebar.exportM3U')}
-                  >
-                    <ExportOutlined />
-                  </button>
-                  <button
-                    onClick={(e) => handleDeletePlaylist(e, playlist.id)}
-                    className={s.actionBtn}
-                    title={t('sidebar.deletePlaylist')}
-                  >
-                    <DeleteOutlined />
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Bottom Quick Sections */}
-      <div className={s.quickSections} role="navigation" aria-label="快捷导航">
-        {sections.map((section) => {
-          const isActive = activeSection === section.key;
-          return (
-            <div
-              key={section.key}
-              onClick={() => handleSectionChange(section.key)}
-              className={`${s.quickSectionItem} ${isActive ? s.quickSectionItemActive : ''}`}
-              role="button"
-              tabIndex={0}
-              aria-label={section.label}
-              aria-pressed={isActive}
-              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleSectionChange(section.key); } }}
+      {/* Smart Folders Section - hidden in compact mode */}
+      {!isCompact && (
+        <div className={s.playlistsSection}>
+          <div className={s.playlistsHeader}>
+            <span className={s.sectionLabel}>{t('sidebar.smartFolders')}</span>
+            <button
+              onClick={() => setShowSmartFolderModal(true)}
+              className={`${s.iconBtn} ${s.iconBtnSmall}`}
+              title={t('sidebar.newSmartFolder')}
             >
-              <span className={s.quickSectionIcon} style={{ color: section.color }}>{section.icon}</span>
-              <span className={s.quickSectionLabel}>{section.label}</span>
-            </div>
-          );
-        })}
-      </div>
+              <PlusOutlined />
+            </button>
+          </div>
 
-      {/* Footer */}
-      <div className={s.footer}>
-        <span className={s.footerBrand}>SamplerHub</span>
-        <span className={s.footerVersion}>v1.0</span>
-      </div>
+          <div className={s.playlistList}>
+            {smartFolders.map(folder => {
+              const isActive = activeSection === 'smartFolder' && useLibraryStore.getState().activeSmartFolderId === folder.id;
+              return (
+                <div
+                  key={folder.id}
+                  onClick={() => handleSelectSmartFolder(folder.id)}
+                  className={`${s.playlistItem} ${isActive ? s.playlistItemActive : ''}`}
+                >
+                  <SearchOutlined style={{ fontSize: 12, color: folder.color || '#10B981' }} />
+                  <span className={s.playlistName}>{folder.name}</span>
+                  <div className={s.playlistActions}>
+                    <button
+                      onClick={(e) => handleDeleteSmartFolder(e, folder.id)}
+                      className={s.actionBtn}
+                      title={t('sidebar.deleteSmartFolder')}
+                    >
+                      <DeleteOutlined />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+            {smartFolders.length === 0 && (
+              <div className={s.emptyHint} onClick={() => setShowSmartFolderModal(true)}>
+                {t('sidebar.noSmartFolders')}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Playlists Section - hidden in compact mode */}
+      {!isCompact && (
+        <div className={s.playlistsSection}>
+          <div className={s.playlistsHeader}>
+            <span className={s.sectionLabel}>{t('sidebar.playlists')}</span>
+            <button
+              onClick={handleCreatePlaylist}
+              className={`${s.iconBtn} ${s.iconBtnSmall}`}
+              title={t('sidebar.newPlaylist')}
+            >
+              <PlusOutlined />
+            </button>
+          </div>
+
+          <div className={s.playlistList}>
+            {playlists.map(playlist => {
+              const isActive = activePlaylistId === playlist.id && activeSection === 'playlist';
+              const isEditing = editingId === playlist.id;
+
+              return (
+                <div
+                  key={playlist.id}
+                  onClick={() => handleSelectPlaylist(playlist.id)}
+                  className={`${s.playlistItem} ${isActive ? s.playlistItemActive : ''}`}
+                >
+                  <span
+                    className={s.playlistDot}
+                    style={{ background: playlist.coverColor || '#6366F1' }}
+                  />
+
+                  {isEditing ? (
+                    <input
+                      value={editingName}
+                      onChange={e => setEditingName(e.target.value)}
+                      onBlur={() => handleFinishEdit(playlist.id)}
+                      onKeyDown={e => { if (e.key === 'Enter') handleFinishEdit(playlist.id); }}
+                      onClick={e => e.stopPropagation()}
+                      autoFocus
+                      className={s.playlistEditInput}
+                    />
+                  ) : (
+                    <span className={s.playlistName}>
+                      {playlist.name}
+                    </span>
+                  )}
+
+                  <span className={s.playlistCount}>
+                    {playlist.itemCount || 0}
+                  </span>
+
+                  <div className={s.playlistActions}>
+                    <button
+                      onClick={(e) => handleStartEdit(e, playlist)}
+                      className={s.actionBtn}
+                      title={t('sidebar.rename')}
+                    >
+                      <EditOutlined />
+                    </button>
+                    <button
+                      onClick={(e) => handleExportPlaylist(e, playlist.id)}
+                      className={s.actionBtn}
+                      title={t('sidebar.exportM3U')}
+                    >
+                      <ExportOutlined />
+                    </button>
+                    <button
+                      onClick={(e) => handleDeletePlaylist(e, playlist.id)}
+                      className={s.actionBtn}
+                      title={t('sidebar.deletePlaylist')}
+                    >
+                      <DeleteOutlined />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Bottom Quick Sections - hidden in compact mode */}
+      {!isCompact && (
+        <div className={s.quickSections} role="navigation" aria-label="快捷导航">
+          {sections.map((section) => {
+            const isActive = activeSection === section.key;
+            return (
+              <div
+                key={section.key}
+                onClick={() => handleSectionChange(section.key)}
+                className={`${s.quickSectionItem} ${isActive ? s.quickSectionItemActive : ''}`}
+                role="button"
+                tabIndex={0}
+                aria-label={section.label}
+                aria-pressed={isActive}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleSectionChange(section.key); } }}
+              >
+                <span className={s.quickSectionIcon} style={{ color: section.color }}>{section.icon}</span>
+                <span className={s.quickSectionLabel}>{section.label}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Footer - hidden in compact mode */}
+      {!isCompact && (
+        <div className={s.footer}>
+          <span className={s.footerBrand}>SamplerHub</span>
+          <span className={s.footerVersion}>v1.0</span>
+        </div>
+      )}
 
       {/* 创建智能文件夹对话框 */}
       <Modal

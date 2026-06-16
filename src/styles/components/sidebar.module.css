@@ -65,6 +65,17 @@
   overflow-y: auto;
   overflow-x: hidden;
   padding: 0 8px;
+  min-height: 120px;
+}
+
+/* On medium-height screens, ensure tree area is visible */
+@media (max-height: 700px) {
+  .treeArea {
+    min-height: 80px;
+  }
+  .playlistList {
+    max-height: 100px;
+  }
 }
 
 /* Playlists Section */
