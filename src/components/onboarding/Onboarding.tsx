@@ -23,29 +23,17 @@ const LANGUAGES = [
 const MODES = [
   {
     id: 'music' as const,
-    label: 'Music Production',
-    labelZh: '音乐制作',
     icon: '🎵',
-    desc: 'Manage samples for music production',
-    descZh: '管理音乐制作采样',
     gradient: 'from-indigo-500 via-purple-500 to-pink-500',
   },
   {
     id: 'game' as const,
-    label: 'Game Audio',
-    labelZh: '游戏音效',
     icon: '🎮',
-    desc: 'Organize game sound effects & SFX',
-    descZh: '整理游戏音效素材',
     gradient: 'from-emerald-500 via-teal-500 to-cyan-500',
   },
   {
     id: 'post' as const,
-    label: 'Post Production',
-    labelZh: '后期制作',
     icon: '🎬',
-    desc: 'Handle post-production audio',
-    descZh: '处理后期制作音频',
     gradient: 'from-orange-500 via-amber-500 to-yellow-500',
   },
 ];
@@ -74,7 +62,9 @@ const Onboarding: React.FC<{ onComplete: () => void }> = ({ onComplete }) => {
   const { t, i18n: i18nInstance } = useTranslation();
   const [step, setStep] = useState(0);
   const [direction, setDirection] = useState(1);
-  const [selectedLang, setSelectedLang] = useState(i18nInstance.language || 'zh-CN');
+  const [selectedLang, setSelectedLang] = useState(
+    i18nInstance.resolvedLanguage || i18nInstance.language || 'zh-CN'
+  );
   const [selectedMode, setSelectedMode] = useState<'music' | 'game' | 'post'>('music');
   const [addedFolders, setAddedFolders] = useState<string[]>([]);
   const [isAdding, setIsAdding] = useState(false);
@@ -429,8 +419,7 @@ const ModeStep: React.FC<{
   onNext: () => void;
   onBack: () => void;
 }> = ({ selectedMode, onSelect, onNext, onBack }) => {
-  const { t, i18n: i18nInstance } = useTranslation();
-  const isZh = i18nInstance.language?.startsWith('zh');
+  const { t } = useTranslation();
   return (
     <div>
       <h2 style={{
@@ -493,13 +482,13 @@ const ModeStep: React.FC<{
                   color: 'var(--text-primary)',
                   marginBottom: 2,
                 }}>
-                  {isZh ? mode.labelZh : mode.label}
+                  {t(`onboarding.mode.${mode.id}.label`, mode.id === 'music' ? 'Music Production' : mode.id === 'game' ? 'Game Audio' : 'Post Production')}
                 </div>
                 <div style={{
                   fontSize: 13,
                   color: 'var(--text-secondary)',
                 }}>
-                  {isZh ? mode.descZh : mode.desc}
+                  {t(`onboarding.mode.${mode.id}.desc`, mode.id === 'music' ? 'Manage samples for music production' : mode.id === 'game' ? 'Organize game sound effects & SFX' : 'Handle post-production audio')}
                 </div>
               </div>
               {isSelected && (
