@@ -1,7 +1,7 @@
 import { ipcMain } from 'electron';
 import { IPC_CHANNELS } from '../../../shared/types/ipc.types';
 import { getDatabase, getSqlite, initDatabase } from './database';
-import { startWatchingAllFolders } from './fileWatcher';
+
 import { samples } from '../../../drizzle/schema';
 import { registerAnalysisIpcHandlers } from './ipcAnalysis';
 import type { IpcContext } from './ipcTypes';
@@ -17,8 +17,8 @@ import { registerBackupConfigHandlers } from './ipcBackupConfig';
 export async function registerIpcHandlers(): Promise<void> {
   await initDatabase();
 
-  // 启动文件监控（异步，不阻塞初始化）
-  startWatchingAllFolders().catch(err => console.warn('Failed to start file watchers:', err));
+  // 文件监控延迟到 index.ts 中启动（避免与初始化同时执行）
+  // startWatchingAllFolders() 在 index.ts 的 app.whenReady() 后 15 秒调用
 
   const db = getDatabase();
   const sqlite = getSqlite();

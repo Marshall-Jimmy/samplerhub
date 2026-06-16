@@ -1,0 +1,753 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jima's SamplerHub - Demo 展示</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            background: #0a0a0f;
+            color: #e4e4e7;
+            line-height: 1.7;
+            overflow-x: hidden;
+        }
+        .container { max-width: 1100px; margin: 0 auto; padding: 20px 24px 60px; }
+
+        /* 导航 */
+        .top-nav {
+            position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+            background: rgba(10,10,15,0.85); backdrop-filter: blur(12px);
+            border-bottom: 1px solid #27272a; padding: 0 24px;
+            display: flex; align-items: center; height: 56px; gap: 24px;
+        }
+        .top-nav .logo {
+            font-size: 16px; font-weight: 700;
+            background: linear-gradient(90deg, #818cf8, #c084fc);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+        }
+        .top-nav a {
+            color: #a1a1aa; text-decoration: none; font-size: 14px;
+            transition: color 0.2s;
+        }
+        .top-nav a:hover, .top-nav a.active { color: #818cf8; }
+
+        /* Hero */
+        .hero {
+            text-align: center; padding: 80px 0 40px; margin-top: 56px;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            border-radius: 16px; margin-bottom: 32px; position: relative; overflow: hidden;
+        }
+        .hero::before {
+            content: ''; position: absolute; top: -50%; left: -50%; width: 200%; height: 200%;
+            background: radial-gradient(circle, rgba(99,102,241,0.08) 0%, transparent 70%);
+            animation: pulse 4s ease-in-out infinite;
+        }
+        @keyframes pulse { 0%,100%{transform:scale(1);opacity:0.5} 50%{transform:scale(1.1);opacity:0.8} }
+        .hero-content { position: relative; z-index: 1; }
+        .hero h1 {
+            font-size: 48px; font-weight: 800;
+            background: linear-gradient(90deg, #818cf8, #c084fc, #f472b6);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            margin-bottom: 12px;
+        }
+        .hero .subtitle { font-size: 20px; color: #a1a1aa; margin-bottom: 8px; }
+        .hero .version { font-size: 14px; color: #52525b; margin-bottom: 24px; }
+        .hero .badges { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+        .badge {
+            padding: 5px 14px; border-radius: 20px; font-size: 12px; font-weight: 600;
+        }
+        .badge-purple { background: rgba(99,102,241,0.2); color: #818cf8; border: 1px solid rgba(99,102,241,0.3); }
+        .badge-green { background: rgba(34,197,94,0.15); color: #4ade80; border: 1px solid rgba(34,197,94,0.3); }
+        .badge-amber { background: rgba(245,158,11,0.15); color: #fbbf24; border: 1px solid rgba(245,158,11,0.3); }
+        .badge-pink { background: rgba(244,63,94,0.15); color: #fb7185; border: 1px solid rgba(244,63,94,0.3); }
+
+        /* 通用 Section */
+        .section {
+            background: #14141b; border-radius: 12px; padding: 32px;
+            margin-bottom: 24px; border: 1px solid #27272a;
+        }
+        .section h2 {
+            font-size: 22px; font-weight: 700; color: #fafafa;
+            margin-bottom: 20px; display: flex; align-items: center; gap: 10px;
+        }
+        .section h2 .icon {
+            width: 32px; height: 32px; background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 16px;
+        }
+        .section h3 { font-size: 16px; font-weight: 600; color: #d4d4d8; margin: 16px 0 10px; }
+        .section p { color: #a1a1aa; margin-bottom: 10px; font-size: 14px; }
+
+        /* 功能卡片 */
+        .feature-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; margin-top: 16px; }
+        .feature-card {
+            background: #1c1c24; border-radius: 10px; padding: 24px;
+            border: 1px solid #27272a; transition: all 0.3s ease; cursor: pointer;
+        }
+        .feature-card:hover { border-color: #6366f1; transform: translateY(-2px); box-shadow: 0 8px 24px rgba(99,102,241,0.15); }
+        .feature-card .card-icon { font-size: 32px; margin-bottom: 12px; }
+        .feature-card h4 { font-size: 16px; font-weight: 600; color: #fafafa; margin-bottom: 8px; }
+        .feature-card p { font-size: 13px; color: #71717a; margin: 0; }
+        .feature-card .tag-row { display: flex; gap: 6px; margin-top: 12px; flex-wrap: wrap; }
+        .feature-card .mini-tag {
+            padding: 2px 8px; background: rgba(99,102,241,0.1); border-radius: 4px;
+            font-size: 11px; color: #818cf8;
+        }
+
+        /* 模拟界面 */
+        .app-mockup {
+            background: #0f0f17; border-radius: 10px; border: 1px solid #27272a;
+            overflow: hidden; margin: 16px 0;
+        }
+        .mockup-titlebar {
+            height: 32px; background: #1a1a24; display: flex; align-items: center;
+            padding: 0 12px; gap: 6px; border-bottom: 1px solid #27272a;
+        }
+        .mockup-dot { width: 10px; height: 10px; border-radius: 50%; }
+        .mockup-dot.red { background: #ef4444; }
+        .mockup-dot.yellow { background: #eab308; }
+        .mockup-dot.green { background: #22c55e; }
+        .mockup-titlebar span { margin-left: 8px; font-size: 12px; color: #52525b; }
+        .mockup-body { display: flex; min-height: 300px; }
+
+        /* 模拟侧边栏 */
+        .mockup-sidebar {
+            width: 220px; background: #111118; border-right: 1px solid #1e1e28;
+            padding: 12px 0; flex-shrink: 0;
+        }
+        .sidebar-section { padding: 8px 16px; }
+        .sidebar-section-title {
+            font-size: 10px; font-weight: 600; color: #52525b;
+            text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;
+        }
+        .sidebar-item {
+            display: flex; align-items: center; gap: 8px; padding: 6px 12px;
+            border-radius: 6px; font-size: 13px; color: #a1a1aa; cursor: pointer;
+            transition: all 0.15s;
+        }
+        .sidebar-item:hover { background: #1c1c24; color: #e4e4e7; }
+        .sidebar-item.active { background: rgba(99,102,241,0.15); color: #818cf8; }
+        .sidebar-item .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+        /* 模拟内容区 */
+        .mockup-content { flex: 1; padding: 16px; overflow: hidden; }
+        .mockup-search {
+            width: 100%; padding: 8px 12px; background: #1c1c24; border: 1px solid #27272a;
+            border-radius: 8px; color: #a1a1aa; font-size: 13px; margin-bottom: 16px;
+        }
+        .mockup-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
+        .mockup-card {
+            background: #1c1c24; border-radius: 8px; padding: 12px; border: 1px solid #27272a;
+            transition: all 0.15s; cursor: pointer;
+        }
+        .mockup-card:hover { border-color: #6366f1; }
+        .mockup-card .waveform {
+            height: 32px; background: linear-gradient(90deg, #6366f1 0%, #8b5cf6 30%, #a78bfa 60%, #6366f1 100%);
+            border-radius: 4px; margin-bottom: 8px; position: relative; overflow: hidden;
+        }
+        .mockup-card .waveform::after {
+            content: ''; position: absolute; top: 0; left: 0; width: 40%; height: 100%;
+            background: linear-gradient(90deg, rgba(99,102,241,0.3), transparent);
+            animation: waveMove 2s ease-in-out infinite;
+        }
+        @keyframes waveMove { 0%,100%{left:0} 50%{left:60%} }
+        .mockup-card .name { font-size: 11px; color: #d4d4d8; font-weight: 500; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .mockup-card .meta { font-size: 10px; color: #52525b; }
+
+        /* 模拟鼓垫 */
+        .drum-pad-grid {
+            display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;
+            max-width: 360px; margin: 0 auto;
+        }
+        .drum-pad {
+            aspect-ratio: 1; border-radius: 10px; display: flex; align-items: center;
+            justify-content: center; font-size: 12px; font-weight: 600; color: #fafafa;
+            cursor: pointer; transition: all 0.1s; user-select: none;
+            border: 2px solid transparent;
+        }
+        .drum-pad:active, .drum-pad.active {
+            transform: scale(0.95); filter: brightness(1.3);
+            border-color: rgba(255,255,255,0.3);
+        }
+        .pad-1 { background: #ef4444; } .pad-2 { background: #f97316; }
+        .pad-3 { background: #eab308; } .pad-4 { background: #22c55e; }
+        .pad-5 { background: #06b6d4; } .pad-6 { background: #3b82f6; }
+        .pad-7 { background: #6366f1; } .pad-8 { background: #8b5cf6; }
+        .pad-9 { background: #a855f7; } .pad-10 { background: #d946ef; }
+        .pad-11 { background: #ec4899; } .pad-12 { background: #f43f5e; }
+        .pad-13 { background: #78716c; } .pad-14 { background: #6b7280; }
+        .pad-15 { background: #52525b; } .pad-16 { background: #3f3f46; }
+
+        /* 模拟音序器 */
+        .sequencer-grid {
+            display: grid; grid-template-columns: 60px repeat(16, 1fr); gap: 2px;
+            max-width: 700px; margin: 0 auto;
+        }
+        .seq-label {
+            font-size: 10px; color: #71717a; display: flex; align-items: center;
+            justify-content: flex-end; padding-right: 6px;
+        }
+        .seq-cell {
+            aspect-ratio: 1; background: #1c1c24; border-radius: 3px;
+            cursor: pointer; transition: all 0.1s; min-height: 20px;
+        }
+        .seq-cell:hover { background: #27272a; }
+        .seq-cell.on { background: #6366f1; }
+        .seq-cell.on:nth-child(4n+2) { background: #818cf8; }
+        .seq-cell.beat-marker { background: #1a1a2e; }
+
+        /* Tab 切换 */
+        .tab-bar { display: flex; gap: 4px; margin-bottom: 16px; }
+        .tab-btn {
+            padding: 8px 16px; border-radius: 8px; font-size: 13px; font-weight: 500;
+            color: #71717a; cursor: pointer; transition: all 0.2s; border: none; background: none;
+        }
+        .tab-btn:hover { color: #a1a1aa; }
+        .tab-btn.active { background: rgba(99,102,241,0.15); color: #818cf8; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        /* 交互式搜索演示 */
+        .search-demo {
+            background: #1c1c24; border-radius: 10px; padding: 20px; border: 1px solid #27272a;
+        }
+        .search-input {
+            width: 100%; padding: 12px 16px; background: #0f0f17; border: 1px solid #3f3f46;
+            border-radius: 8px; color: #e4e4e7; font-size: 15px; outline: none;
+            transition: border-color 0.2s;
+        }
+        .search-input:focus { border-color: #6366f1; }
+        .search-input::placeholder { color: #52525b; }
+        .search-results { margin-top: 16px; }
+        .result-item {
+            display: flex; align-items: center; gap: 12px; padding: 10px 12px;
+            border-radius: 8px; transition: background 0.15s; cursor: pointer;
+        }
+        .result-item:hover { background: #27272a; }
+        .result-item .score {
+            padding: 2px 8px; background: rgba(99,102,241,0.15); border-radius: 4px;
+            font-size: 11px; color: #818cf8; font-weight: 600; white-space: nowrap;
+        }
+        .result-item .info { flex: 1; }
+        .result-item .info .name { font-size: 13px; color: #d4d4d8; font-weight: 500; }
+        .result-item .info .detail { font-size: 11px; color: #52525b; }
+        .result-item .waveform-mini {
+            width: 80px; height: 24px; border-radius: 3px; flex-shrink: 0;
+        }
+
+        /* 技术栈 */
+        .tech-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-top: 16px; }
+        .tech-card {
+            background: #1c1c24; border-radius: 8px; padding: 16px; border: 1px solid #27272a;
+            text-align: center;
+        }
+        .tech-card .tech-name { font-size: 15px; font-weight: 600; color: #fafafa; margin-bottom: 4px; }
+        .tech-card .tech-desc { font-size: 12px; color: #52525b; }
+
+        /* 开发过程 */
+        .dev-timeline { position: relative; padding-left: 28px; }
+        .dev-timeline::before {
+            content: ''; position: absolute; left: 7px; top: 0; bottom: 0;
+            width: 2px; background: linear-gradient(180deg, #6366f1, #8b5cf6, #c084fc);
+        }
+        .dev-step {
+            position: relative; margin-bottom: 28px;
+        }
+        .dev-step::before {
+            content: ''; position: absolute; left: -25px; top: 4px;
+            width: 12px; height: 12px; background: #6366f1;
+            border-radius: 50%; border: 2px solid #0a0a0f;
+        }
+        .dev-step h4 { font-size: 15px; font-weight: 600; color: #fafafa; margin-bottom: 6px; }
+        .dev-step p { font-size: 13px; color: #71717a; margin: 0; }
+        .dev-step .step-tags { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+        .dev-step .step-tag {
+            padding: 2px 8px; background: #1c1c24; border: 1px solid #3f3f46;
+            border-radius: 4px; font-size: 11px; color: #a1a1aa;
+        }
+
+        /* 统计 */
+        .stats-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-top: 16px; }
+        .stat-card {
+            text-align: center; padding: 20px 12px; background: #1c1c24;
+            border-radius: 10px; border: 1px solid #27272a;
+        }
+        .stat-card .num {
+            font-size: 28px; font-weight: 800;
+            background: linear-gradient(90deg, #818cf8, #c084fc);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+        }
+        .stat-card .label { font-size: 12px; color: #52525b; margin-top: 4px; }
+
+        /* CTA */
+        .cta {
+            text-align: center; padding: 48px 32px;
+            background: linear-gradient(135deg, #1a1a2e, #16213e);
+            border-radius: 16px; margin-top: 32px;
+        }
+        .cta h2 { justify-content: center; font-size: 26px; }
+        .cta p { color: #a1a1aa; margin: 12px 0 24px; }
+        .btn {
+            display: inline-block; padding: 14px 32px;
+            background: linear-gradient(90deg, #6366f1, #8b5cf6);
+            color: white; text-decoration: none; border-radius: 10px;
+            font-weight: 600; transition: all 0.3s; font-size: 15px;
+        }
+        .btn:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(99,102,241,0.4); }
+        .btn-outline {
+            display: inline-block; padding: 14px 32px; margin-left: 12px;
+            background: transparent; color: #818cf8;
+            border: 1px solid #6366f1; border-radius: 10px;
+            font-weight: 600; transition: all 0.3s; font-size: 15px;
+            text-decoration: none;
+        }
+        .btn-outline:hover { background: rgba(99,102,241,0.1); }
+
+        @media (max-width: 768px) {
+            .hero h1 { font-size: 28px; }
+            .stats-grid { grid-template-columns: repeat(3, 1fr); }
+            .feature-grid { grid-template-columns: 1fr; }
+            .mockup-sidebar { width: 160px; }
+            .mockup-grid { grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); }
+        }
+    </style>
+</head>
+<body>
+    <!-- 顶部导航 -->
+    <div class="top-nav">
+        <div class="logo">SamplerHub</div>
+        <a href="#features" class="active">功能</a>
+        <a href="#demo">Demo</a>
+        <a href="#tech">技术</a>
+        <a href="#process">开发过程</a>
+    </div>
+
+    <div class="container">
+        <!-- Hero -->
+        <div class="hero">
+            <div class="hero-content">
+                <h1>Jima's SamplerHub</h1>
+                <p class="subtitle">音乐制作人智能采样管理工作站</p>
+                <p class="version">v1.0.0 | Electron + React + TypeScript | CLAP AI</p>
+                <div class="badges">
+                    <span class="badge badge-purple">AI 语义搜索</span>
+                    <span class="badge badge-green">40+ 智能分类</span>
+                    <span class="badge badge-amber">鼓垫 + 音序器</span>
+                    <span class="badge badge-pink">12 种语言</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 项目数据 -->
+        <div class="section">
+            <h2><span class="icon">📊</span>项目概览</h2>
+            <div class="stats-grid">
+                <div class="stat-card"><div class="num">46</div><div class="label">服务模块</div></div>
+                <div class="stat-card"><div class="num">30+</div><div class="label">UI 组件</div></div>
+                <div class="stat-card"><div class="num">12</div><div class="label">支持语言</div></div>
+                <div class="stat-card"><div class="num">40+</div><div class="label">采样分类</div></div>
+                <div class="stat-card"><div class="num">10K+</div><div class="label">采样秒级加载</div></div>
+            </div>
+        </div>
+
+        <!-- 核心功能 -->
+        <div class="section" id="features">
+            <h2><span class="icon">⚡</span>核心功能</h2>
+            <div class="feature-grid">
+                <div class="feature-card">
+                    <div class="card-icon">🤖</div>
+                    <h4>AI 智能分类</h4>
+                    <p>基于音频内容和文件名自动分类到 Drums、Bass、Synths 等 40+ 类别，支持 UCS 国际标准</p>
+                    <div class="tag-row">
+                        <span class="mini-tag">UCS 标准</span>
+                        <span class="mini-tag">自动分类</span>
+                        <span class="mini-tag">自定义规则</span>
+                    </div>
+                </div>
+                <div class="feature-card">
+                    <div class="card-icon">🧠</div>
+                    <h4>CLAP 语义搜索</h4>
+                    <p>输入自然语言描述，AI 理解你的意图，找到最匹配的采样。支持同义词扩展和三级搜索降级</p>
+                    <div class="tag-row">
+                        <span class="mini-tag">CLAP Embedding</span>
+                        <span class="mini-tag">三级降级</span>
+                        <span class="mini-tag">余弦相似度</span>
+                    </div>
+                </div>
+                <div class="feature-card">
+                    <div class="card-icon">🎹</div>
+                    <h4>鼓垫 + 音序器</h4>
+                    <p>16 格鼓垫支持键盘/MIDI 触发，内置步进音序器可快速编排节奏，灵感即时落地</p>
+                    <div class="tag-row">
+                        <span class="mini-tag">16 Pad</span>
+                        <span class="mini-tag">Step Sequencer</span>
+                        <span class="mini-tag">MIDI</span>
+                    </div>
+                </div>
+                <div class="feature-card">
+                    <div class="card-icon">📶</div>
+                    <h4>波形可视化</h4>
+                    <p>实时波形预览，支持播放、循环、变速。Web Audio API 驱动，零延迟体验</p>
+                    <div class="tag-row">
+                        <span class="mini-tag">WaveSurfer</span>
+                        <span class="mini-tag">Web Audio</span>
+                        <span class="mini-tag">Tone.js</span>
+                    </div>
+                </div>
+                <div class="feature-card">
+                    <div class="card-icon">🌍</div>
+                    <h4>在线采样库</h4>
+                    <p>集成 Freesound、Pixabay、SND.dev，一键浏览和下载免费采样到本地</p>
+                    <div class="tag-row">
+                        <span class="mini-tag">Freesound</span>
+                        <span class="mini-tag">Pixabay</span>
+                        <span class="mini-tag">SND.dev</span>
+                    </div>
+                </div>
+                <div class="feature-card">
+                    <div class="card-icon">🔧</div>
+                    <h4>Mod 扩展系统</h4>
+                    <p>可扩展的模组框架，内置 Wavetable Synth、Scale Keyboard、AI Descriptor 等模组</p>
+                    <div class="tag-row">
+                        <span class="mini-tag">Mod API</span>
+                        <span class="mini-tag">插件系统</span>
+                        <span class="mini-tag">自定义扩展</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 交互式 Demo -->
+        <div class="section" id="demo">
+            <h2><span class="icon">🎮</span>交互式 Demo</h2>
+            <p>点击下方标签切换不同功能模块的模拟界面</p>
+
+            <div class="tab-bar">
+                <button class="tab-btn active" onclick="switchTab('library')">采样库</button>
+                <button class="tab-btn" onclick="switchTab('drumpad')">鼓垫</button>
+                <button class="tab-btn" onclick="switchTab('sequencer')">音序器</button>
+                <button class="tab-btn" onclick="switchTab('search')">语义搜索</button>
+            </div>
+
+            <!-- 采样库 -->
+            <div class="tab-content active" id="tab-library">
+                <div class="app-mockup">
+                    <div class="mockup-titlebar">
+                        <div class="mockup-dot red"></div>
+                        <div class="mockup-dot yellow"></div>
+                        <div class="mockup-dot green"></div>
+                        <span>Jima's SamplerHub - 采样库</span>
+                    </div>
+                    <div class="mockup-body">
+                        <div class="mockup-sidebar">
+                            <div class="sidebar-section">
+                                <div class="sidebar-section-title">分类</div>
+                                <div class="sidebar-item active"><div class="dot" style="background:#ef4444"></div>Drums</div>
+                                <div class="sidebar-item"><div class="dot" style="background:#38bdf8"></div>Bass</div>
+                                <div class="sidebar-item"><div class="dot" style="background:#818cf8"></div>Synths</div>
+                                <div class="sidebar-item"><div class="dot" style="background:#f59e0b"></div>Instruments</div>
+                                <div class="sidebar-item"><div class="dot" style="background:#a3e635"></div>Loops</div>
+                                <div class="sidebar-item"><div class="dot" style="background:#fb7185"></div>Vocal & FX</div>
+                            </div>
+                            <div class="sidebar-section">
+                                <div class="sidebar-section-title">Drums 子分类</div>
+                                <div class="sidebar-item" style="padding-left:24px;font-size:12px">Kick</div>
+                                <div class="sidebar-item" style="padding-left:24px;font-size:12px">Snare</div>
+                                <div class="sidebar-item" style="padding-left:24px;font-size:12px">Hi-Hat</div>
+                                <div class="sidebar-item" style="padding-left:24px;font-size:12px">808 Bass</div>
+                                <div class="sidebar-item" style="padding-left:24px;font-size:12px">Percussion</div>
+                            </div>
+                        </div>
+                        <div class="mockup-content">
+                            <input class="mockup-search" type="text" placeholder="搜索采样... (Ctrl+F)" readonly>
+                            <div class="mockup-grid">
+                                <div class="mockup-card"><div class="waveform"></div><div class="name">Kick_Heavy_01.wav</div><div class="meta">0:01.2 | 120 BPM | C</div></div>
+                                <div class="mockup-card"><div class="waveform" style="background:linear-gradient(90deg,#f59e0b,#fbbf24,#f59e0b)"></div><div class="name">Snare_Crisp_02.wav</div><div class="meta">0:00.8 | 120 BPM</div></div>
+                                <div class="mockup-card"><div class="waveform" style="background:linear-gradient(90deg,#22c55e,#4ade80,#22c55e)"></div><div class="name">HiHat_Closed_01.wav</div><div class="meta">0:00.3 | 140 BPM</div></div>
+                                <div class="mockup-card"><div class="waveform" style="background:linear-gradient(90deg,#3b82f6,#60a5fa,#3b82f6)"></div><div class="name">808_Deep_03.wav</div><div class="meta">0:02.1 | 80 BPM | D#</div></div>
+                                <div class="mockup-card"><div class="waveform" style="background:linear-gradient(90deg,#a855f7,#c084fc,#a855f7)"></div><div class="name">Perc_Loop_05.wav</div><div class="meta">0:00.6 | 130 BPM</div></div>
+                                <div class="mockup-card"><div class="waveform" style="background:linear-gradient(90deg,#ec4899,#f472b6,#ec4899)"></div><div class="name">Clap_Tight_01.wav</div><div class="meta">0:00.4 | 128 BPM</div></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 鼓垫 -->
+            <div class="tab-content" id="tab-drumpad">
+                <div class="app-mockup">
+                    <div class="mockup-titlebar">
+                        <div class="mockup-dot red"></div>
+                        <div class="mockup-dot yellow"></div>
+                        <div class="mockup-dot green"></div>
+                        <span>Jima's SamplerHub - 鼓垫</span>
+                    </div>
+                    <div class="mockup-body" style="justify-content: center; align-items: center; padding: 32px;">
+                        <div class="drum-pad-grid" id="drumPadGrid">
+                            <div class="drum-pad pad-1" data-key="1">Kick</div>
+                            <div class="drum-pad pad-2" data-key="2">Snare</div>
+                            <div class="drum-pad pad-3" data-key="3">Clap</div>
+                            <div class="drum-pad pad-4" data-key="4">Hi-Hat</div>
+                            <div class="drum-pad pad-5" data-key="Q">Open HH</div>
+                            <div class="drum-pad pad-6" data-key="W">808</div>
+                            <div class="drum-pad pad-7" data-key="E">Perc</div>
+                            <div class="drum-pad pad-8" data-key="R">Rim</div>
+                            <div class="drum-pad pad-9" data-key="A">Tom</div>
+                            <div class="drum-pad pad-10" data-key="S">Crash</div>
+                            <div class="drum-pad pad-11" data-key="D">Ride</div>
+                            <div class="drum-pad pad-12" data-key="F">Shaker</div>
+                            <div class="drum-pad pad-13" data-key="Z">Sub</div>
+                            <div class="drum-pad pad-14" data-key="X">Synth</div>
+                            <div class="drum-pad pad-15" data-key="C">FX</div>
+                            <div class="drum-pad pad-16" data-key="V">Vocal</div>
+                        </div>
+                        <p style="text-align:center;color:#52525b;font-size:12px;margin-top:16px">点击鼓垫或按键盘 1-4 / Q-R / A-F / Z-V 触发</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 音序器 -->
+            <div class="tab-content" id="tab-sequencer">
+                <div class="app-mockup">
+                    <div class="mockup-titlebar">
+                        <div class="mockup-dot red"></div>
+                        <div class="mockup-dot yellow"></div>
+                        <div class="mockup-dot green"></div>
+                        <span>Jima's SamplerHub - 步进音序器</span>
+                    </div>
+                    <div class="mockup-body" style="padding: 24px; overflow-x: auto;">
+                        <div class="sequencer-grid" id="sequencerGrid">
+                            <!-- Row 1: Kick -->
+                            <div class="seq-label">Kick</div>
+                            <div class="seq-cell on"></div><div class="seq-cell"></div><div class="seq-cell"></div><div class="seq-cell"></div>
+                            <div class="seq-cell on"></div><div class="seq-cell"></div><div class="seq-cell"></div><div class="seq-cell"></div>
+                            <div class="seq-cell on"></div><div class="seq-cell"></div><div class="seq-cell on"></div><div class="seq-cell"></div>
+                            <div class="seq-cell"></div><div class="seq-cell"></div><div class="seq-cell"></div><div class="seq-cell"></div>
+                            <!-- Row 2: Snare -->
+                            <div class="seq-label">Snare</div>
+                            <div class="seq-cell"></div><div class="seq-cell"></div><div class="seq-cell"></div><div class="seq-cell"></div>
+                            <div class="seq-cell on"></div><div class="seq-cell"></div><div class="seq-cell"></div><div class="seq-cell"></div>
+                            <div class="seq-cell"></div><div class="seq-cell"></div><div class="seq-cell"></div><div class="seq-cell"></div>
+                            <div class="seq-cell on"></div><div class="seq-cell"></div><div class="seq-cell"></div><div class="seq-cell"></div>
+                            <!-- Row 3: Hi-Hat -->
+                            <div class="seq-label">Hi-Hat</div>
+                            <div class="seq-cell on"></div><div class="seq-cell"></div><div class="seq-cell on"></div><div class="seq-cell"></div>
+                            <div class="seq-cell on"></div><div class="seq-cell"></div><div class="seq-cell on"></div><div class="seq-cell"></div>
+                            <div class="seq-cell on"></div><div class="seq-cell"></div><div class="seq-cell on"></div><div class="seq-cell"></div>
+                            <div class="seq-cell on"></div><div class="seq-cell"></div><div class="seq-cell on"></div><div class="seq-cell"></div>
+                            <!-- Row 4: 808 -->
+                            <div class="seq-label">808</div>
+                            <div class="seq-cell on"></div><div class="seq-cell"></div><div class="seq-cell"></div><div class="seq-cell"></div>
+                            <div class="seq-cell"></div><div class="seq-cell"></div><div class="seq-cell"></div><div class="seq-cell"></div>
+                            <div class="seq-cell on"></div><div class="seq-cell"></div><div class="seq-cell"></div><div class="seq-cell"></div>
+                            <div class="seq-cell"></div><div class="seq-cell"></div><div class="seq-cell"></div><div class="seq-cell on"></div>
+                        </div>
+                        <p style="text-align:center;color:#52525b;font-size:12px;margin-top:16px">点击格子切换音符开/关 | 4 轨 x 16 步</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 语义搜索 -->
+            <div class="tab-content" id="tab-search">
+                <div class="search-demo">
+                    <input class="search-input" type="text" id="semanticSearch" placeholder="试试输入：温暖的钢琴、沉重的 808、Lo-Fi 鼓点..." oninput="handleSearch(this.value)">
+                    <div class="search-results" id="searchResults">
+                        <p style="color:#52525b;font-size:13px;text-align:center;padding:20px">输入描述文字，体验 CLAP 语义搜索</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 技术架构 -->
+        <div class="section" id="tech">
+            <h2><span class="icon">🛠️</span>技术架构</h2>
+            <p>本项目完全使用 TRAE 辅助开发，从 0 到 1 构建了完整的桌面应用</p>
+            <div class="tech-grid">
+                <div class="tech-card"><div class="tech-name">Electron 31</div><div class="tech-desc">桌面端框架</div></div>
+                <div class="tech-card"><div class="tech-name">React 18</div><div class="tech-desc">UI 框架</div></div>
+                <div class="tech-card"><div class="tech-name">TypeScript</div><div class="tech-desc">类型安全</div></div>
+                <div class="tech-card"><div class="tech-name">SQLite + Drizzle</div><div class="tech-desc">本地数据库</div></div>
+                <div class="tech-card"><div class="tech-name">CLAP AI</div><div class="tech-desc">语义搜索</div></div>
+                <div class="tech-card"><div class="tech-name">Web Audio</div><div class="tech-desc">音频引擎</div></div>
+                <div class="tech-card"><div class="tech-name">Tone.js</div><div class="tech-desc">音乐框架</div></div>
+                <div class="tech-card"><div class="tech-name">Vite</div><div class="tech-desc">构建工具</div></div>
+            </div>
+        </div>
+
+        <!-- TRAE 开发过程 -->
+        <div class="section" id="process">
+            <h2><span class="icon">🤖</span>TRAE 开发过程</h2>
+            <p>以下展示了使用 TRAE 从 0 到 1 开发 SamplerHub 的完整过程</p>
+            <div class="dev-timeline">
+                <div class="dev-step">
+                    <h4>阶段一：项目架构搭建</h4>
+                    <p>使用 TRAE 搭建 Electron + React + TypeScript 基础框架，配置 Vite 构建工具、SQLite 数据库、Drizzle ORM，建立前后端 IPC 通信架构。</p>
+                    <div class="step-tags">
+                        <span class="step-tag">Electron 初始化</span>
+                        <span class="step-tag">React 路由</span>
+                        <span class="step-tag">SQLite Schema</span>
+                        <span class="step-tag">IPC 通道设计</span>
+                    </div>
+                </div>
+                <div class="dev-step">
+                    <h4>阶段二：核心功能开发</h4>
+                    <p>实现采样文件扫描与索引、AI 智能分类（UCS 标准 40+ 类别）、波形可视化预览、全文搜索（FTS5）、文件夹实时监控与自动同步。</p>
+                    <div class="step-tags">
+                        <span class="step-tag">文件扫描器</span>
+                        <span class="step-tag">UCS 分类器</span>
+                        <span class="step-tag">波形生成</span>
+                        <span class="step-tag">FTS5 搜索</span>
+                        <span class="step-tag">Chokidar 监控</span>
+                    </div>
+                </div>
+                <div class="dev-step">
+                    <h4>阶段三：AI 能力集成</h4>
+                    <p>引入 CLAP 语义嵌入模型，实现自然语言搜索音频；集成 Python sidecar 进行音频特征提取；添加 BPM/Key 自动检测和音频指纹去重。</p>
+                    <div class="step-tags">
+                        <span class="step-tag">CLAP Embedding</span>
+                        <span class="step-tag">Python Sidecar</span>
+                        <span class="step-tag">BPM 检测</span>
+                        <span class="step-tag">Key 识别</span>
+                        <span class="step-tag">三级搜索降级</span>
+                    </div>
+                </div>
+                <div class="dev-step">
+                    <h4>阶段四：创作工具开发</h4>
+                    <p>开发 16 格鼓垫演奏器（支持键盘/MIDI 触发）、步进音序器、混音台、在线采样库浏览器、MIDI 钢琴卷帘。</p>
+                    <div class="step-tags">
+                        <span class="step-tag">DrumPad</span>
+                        <span class="step-tag">StepSequencer</span>
+                        <span class="step-tag">Mixer</span>
+                        <span class="step-tag">在线采样 API</span>
+                        <span class="step-tag">MIDI 解析</span>
+                    </div>
+                </div>
+                <div class="dev-step">
+                    <h4>阶段五：性能优化 & 发布准备</h4>
+                    <p>优化 10,000+ 采样加载性能（45 秒 → 秒级）；添加 12 种语言国际化；实现新手引导流程；配置 GitHub Releases 自动更新；编写单元测试和 E2E 测试。</p>
+                    <div class="step-tags">
+                        <span class="step-tag">DB 索引优化</span>
+                        <span class="step-tag">i18n 12 语言</span>
+                        <span class="step-tag">Onboarding</span>
+                        <span class="step-tag">electron-updater</span>
+                        <span class="step-tag">Vitest + Playwright</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- CTA -->
+        <div class="cta">
+            <h2>让创作回归创作本身</h2>
+            <p>Jima's SamplerHub —— 音乐人的智能采样管家</p>
+            <a href="https://github.com/jimmma/samplerhub" class="btn">GitHub 源码</a>
+            <a href="https://github.com/jimmma/samplerhub/releases" class="btn-outline">下载 v1.0.0</a>
+        </div>
+    </div>
+
+    <script>
+        // Tab 切换
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.getElementById('tab-' + tabId).classList.add('active');
+            event.target.classList.add('active');
+        }
+
+        // 鼓垫交互
+        document.querySelectorAll('.drum-pad').forEach(pad => {
+            pad.addEventListener('mousedown', () => {
+                pad.classList.add('active');
+                // 简单的视觉反馈
+                pad.style.boxShadow = '0 0 20px rgba(255,255,255,0.3)';
+            });
+            pad.addEventListener('mouseup', () => {
+                pad.classList.remove('active');
+                pad.style.boxShadow = '';
+            });
+            pad.addEventListener('mouseleave', () => {
+                pad.classList.remove('active');
+                pad.style.boxShadow = '';
+            });
+        });
+
+        // 键盘触发鼓垫
+        const keyMap = {'1':0,'2':1,'3':2,'4':3,'q':4,'w':5,'e':6,'r':7,'a':8,'s':9,'d':10,'f':11,'z':12,'x':13,'c':14,'v':15};
+        document.addEventListener('keydown', (e) => {
+            const idx = keyMap[e.key.toLowerCase()];
+            if (idx !== undefined) {
+                const pad = document.querySelectorAll('.drum-pad')[idx];
+                pad.classList.add('active');
+                pad.style.boxShadow = '0 0 20px rgba(255,255,255,0.3)';
+            }
+        });
+        document.addEventListener('keyup', (e) => {
+            const idx = keyMap[e.key.toLowerCase()];
+            if (idx !== undefined) {
+                const pad = document.querySelectorAll('.drum-pad')[idx];
+                pad.classList.remove('active');
+                pad.style.boxShadow = '';
+            }
+        });
+
+        // 音序器交互
+        document.querySelectorAll('.seq-cell').forEach(cell => {
+            cell.addEventListener('click', () => {
+                cell.classList.toggle('on');
+            });
+        });
+
+        // 语义搜索模拟
+        const sampleDatabase = [
+            { name: 'Warm_Piano_Chords_01.wav', cat: 'Piano', bpm: 90, key: 'C', score: 0.95, color: '#f59e0b' },
+            { name: 'Deep_808_Bass_C.wav', cat: '808 Bass', bpm: 80, key: 'C', score: 0.91, color: '#22d3ee' },
+            { name: 'LoFi_Drum_Loop_03.wav', cat: 'Drum Loop', bpm: 85, key: '-', score: 0.88, color: '#f472b6' },
+            { name: 'Soft_Piano_Melody_02.wav', cat: 'Piano', bpm: 100, key: 'Am', score: 0.85, color: '#f59e0b' },
+            { name: 'Heavy_808_Sub_Drop.wav', cat: '808 Bass', bpm: 140, key: 'D#', score: 0.82, color: '#22d3ee' },
+            { name: 'Vintage_Drum_Break.wav', cat: 'Drum Loop', bpm: 95, key: '-', score: 0.79, color: '#f472b6' },
+            { name: 'Gentle_Piano_Arpeggio.wav', cat: 'Piano', bpm: 120, key: 'F', score: 0.76, color: '#f59e0b' },
+            { name: 'Trap_808_Pattern_01.wav', cat: '808 Bass', bpm: 150, key: 'G', score: 0.73, color: '#22d3ee' },
+        ];
+
+        function handleSearch(query) {
+            const resultsDiv = document.getElementById('searchResults');
+            if (!query.trim()) {
+                resultsDiv.innerHTML = '<p style="color:#52525b;font-size:13px;text-align:center;padding:20px">输入描述文字，体验 CLAP 语义搜索</p>';
+                return;
+            }
+            const q = query.toLowerCase();
+            let matched = sampleDatabase.filter(s => {
+                return s.name.toLowerCase().includes(q) ||
+                       s.cat.toLowerCase().includes(q) ||
+                       q.includes('钢琴') && s.cat === 'Piano' ||
+                       q.includes('808') && s.cat === '808 Bass' ||
+                       q.includes('鼓') && s.cat === 'Drum Loop' ||
+                       q.includes('lo-fi') && s.cat === 'Drum Loop' ||
+                       q.includes('温暖') && s.cat === 'Piano' ||
+                       q.includes('沉重') && s.cat === '808 Bass';
+            });
+            if (matched.length === 0) matched = sampleDatabase.slice(0, 3).map(s => ({...s, score: s.score * 0.6}));
+
+            resultsDiv.innerHTML = matched.map(s => `
+                <div class="result-item">
+                    <div class="score">${Math.round(s.score * 100)}%</div>
+                    <div class="info">
+                        <div class="name">${s.name}</div>
+                        <div class="detail">${s.cat} | ${s.bpm} BPM | ${s.key}</div>
+                    </div>
+                    <div class="waveform-mini" style="background:linear-gradient(90deg,${s.color},${s.color}88,${s.color})"></div>
+                </div>
+            `).join('');
+        }
+
+        // 导航高亮
+        document.querySelectorAll('.top-nav a').forEach(link => {
+            link.addEventListener('click', function(e) {
+                document.querySelectorAll('.top-nav a').forEach(l => l.classList.remove('active'));
+                this.classList.add('active');
+            });
+        });
+    </script>
+</body>
+</html>

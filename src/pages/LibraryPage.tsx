@@ -137,6 +137,14 @@ const LibraryPage: React.FC = () => {
 
   const PAGE_SIZE = 200;
 
+  const [isPageReady, setIsPageReady] = useState(false);
+
+  // 延迟启用查询，避免启动时与 App.tsx 的 onboarding 检测冲突
+  useEffect(() => {
+    const timer = setTimeout(() => setIsPageReady(true), 500);
+    return () => clearTimeout(timer);
+  }, []);
+
   const { data: searchResult, isLoading } = useQuery({
     queryKey: ['samples', cleanFilters, activeSection, activeSmartFolderId, isSemanticSearch],
     queryFn: async () => {
@@ -164,6 +172,7 @@ const LibraryPage: React.FC = () => {
       }
       return ipcClient.searchSamples(cleanFilters);
     },
+    enabled: isPageReady,
   });
 
   const { data: categories } = useQuery({

@@ -51,14 +51,14 @@ const App: React.FC = () => {
     initModLoader();
 
     // 延迟预加载采样数据，避免与启动时的其他 IPC 请求冲突
-    // 使用 fileName/asc 与 libraryStore 默认排序一致，确保缓存命中
+    // 延迟到 4 秒后执行，确保启动流程已完成
     const prefetchTimer = setTimeout(() => {
       queryClient.prefetchQuery({
         queryKey: ['samples', { query: '', categoryId: undefined, tagIds: [], key: '', bpmMin: 0, bpmMax: 300, durationMin: 0, durationMax: 60, sortField: 'fileName', sortDirection: 'asc' }, 'all', null, false],
         queryFn: () => ipcClient.searchSamples({ query: '', categoryId: undefined, tagIds: [], key: '', bpmMin: 0, bpmMax: 300, durationMin: 0, durationMax: 60, sortField: 'fileName', sortDirection: 'asc' }),
         staleTime: 5 * 60 * 1000,
       });
-    }, 1500);
+    }, 4000);
 
     // 确保加载动画至少显示 600ms，避免闪烁
     const minTimer = setTimeout(() => {
@@ -80,6 +80,8 @@ const App: React.FC = () => {
       }
 
       // 检查 DB 中是否有样本数据（老用户直接跳过）
+      // 延迟 2 秒执行，避免与启动时的其他 IPC 请求冲突
+      await new Promise(r => setTimeout(r, 2000));
       try {
         const result = await ipcClient.searchSamples({
           query: '', categoryId: undefined, tagIds: [], key: '',

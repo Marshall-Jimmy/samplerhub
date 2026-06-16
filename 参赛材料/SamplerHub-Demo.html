@@ -1,0 +1,1101 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Jima's SamplerHub - 交互式 Demo</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  :root {
+    --bg:#0c0c14; --bg2:#151520; --bg3:#1e1e2e; --border:#2a2a3c;
+    --text:#e2e2ea; --text2:#a0a0b0; --text3:#6e6e80; --text4:#4a4a5c;
+    --accent:#6366f1; --accent2:#818cf8; --accent3:#a78bfa; --accent-glow:rgba(99,102,241,.25);
+    --red:#ef4444; --orange:#f97316; --yellow:#eab308; --green:#22c55e;
+    --cyan:#06b6d4; --blue:#3b82f6; --purple:#8b5cf6; --pink:#ec4899;
+    --rose:#f43f5e; --teal:#14b8a6;
+  }
+  body {
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;
+    background:var(--bg); color:var(--text); line-height:1.6; min-height:100vh;
+  }
+  .app { display:flex; flex-direction:column; height:100vh; overflow:hidden; }
+
+  /* ===== Header ===== */
+  .header {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:0 24px; height:56px; background:linear-gradient(180deg,var(--bg2),var(--bg));
+    border-bottom:1px solid var(--border); flex-shrink:0;
+  }
+  .logo { display:flex; align-items:center; gap:10px; }
+  .logo-icon {
+    width:28px; height:28px; border-radius:8px;
+    background:linear-gradient(135deg,var(--accent),var(--purple));
+    display:flex; align-items:center; justify-content:center;
+    font-size:14px;
+  }
+  .logo-text { font-size:16px; font-weight:700; color:var(--text); }
+  .logo-text span { color:var(--text3); font-weight:400; font-size:12px; margin-left:8px; }
+  .nav { display:flex; gap:4px; background:var(--bg3); padding:3px; border-radius:10px; }
+  .nav-btn {
+    padding:6px 16px; border-radius:8px; border:none; background:transparent;
+    color:var(--text3); font-size:13px; cursor:pointer; transition:all .25s;
+    font-weight:500;
+  }
+  .nav-btn:hover { color:var(--text2); }
+  .nav-btn.active { color:#fff; background:linear-gradient(135deg,var(--accent),var(--purple)); box-shadow:0 2px 12px var(--accent-glow); }
+
+  /* ===== Main ===== */
+  .main { flex:1; display:flex; overflow:hidden; }
+
+  /* ===== Sidebar ===== */
+  .sidebar {
+    width:210px; background:var(--bg2); border-right:1px solid var(--border);
+    padding:16px 0; overflow-y:auto; flex-shrink:0;
+  }
+  .sidebar-title {
+    padding:8px 18px; font-size:10px; font-weight:700; color:var(--text4);
+    text-transform:uppercase; letter-spacing:1px;
+  }
+  .cat-item {
+    display:flex; align-items:center; gap:10px; padding:8px 18px;
+    font-size:13px; color:var(--text2); cursor:pointer; transition:all .2s;
+    border-left:3px solid transparent; margin:0 8px; border-radius:0 8px 8px 0;
+  }
+  .cat-item:hover { background:rgba(255,255,255,.04); color:var(--text); }
+  .cat-item.active { background:rgba(99,102,241,.12); color:var(--accent2); border-left-color:var(--accent); }
+  .cat-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; box-shadow:0 0 6px currentColor; }
+  .cat-arrow { margin-left:auto; font-size:9px; color:var(--text4); transition:transform .2s; }
+  .cat-arrow.expanded { transform:rotate(90deg); color:var(--accent2); }
+  .subcat { padding:4px 0 4px 36px; }
+  .subcat-item {
+    padding:5px 12px; cursor:pointer; border-radius:6px; font-size:12px;
+    color:var(--text3); transition:all .15s; margin-right:8px;
+  }
+  .subcat-item:hover { color:var(--text2); background:rgba(255,255,255,.04); }
+  .subcat-item.active { color:var(--accent2); background:rgba(99,102,241,.08); }
+  .cat-count {
+    margin-left:auto; font-size:11px; color:var(--text4); background:var(--bg3);
+    padding:1px 6px; border-radius:10px;
+  }
+
+  /* ===== Content ===== */
+  .content { flex:1; display:flex; flex-direction:column; overflow:hidden; }
+  .toolbar {
+    display:flex; align-items:center; gap:12px; padding:14px 24px;
+    border-bottom:1px solid var(--border); flex-shrink:0;
+  }
+  .search-box {
+    flex:1; max-width:380px; padding:9px 16px; background:var(--bg3);
+    border:1px solid var(--border); border-radius:10px; color:var(--text);
+    font-size:14px; outline:none; transition:all .2s;
+  }
+  .search-box:focus { border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-glow); }
+  .search-box::placeholder { color:var(--text4); }
+  .btn {
+    padding:8px 18px; border-radius:8px; border:1px solid var(--border);
+    background:var(--bg3); color:var(--text2); font-size:13px; cursor:pointer;
+    transition:all .2s; font-weight:500;
+  }
+  .btn:hover { border-color:var(--accent); color:var(--accent2); background:rgba(99,102,241,.08); }
+  .btn-primary {
+    background:linear-gradient(135deg,var(--accent),var(--purple));
+    border:none; color:#fff; box-shadow:0 2px 12px var(--accent-glow);
+  }
+  .btn-primary:hover { filter:brightness(1.15); color:#fff; }
+
+  /* ===== Sample Grid ===== */
+  .sample-grid {
+    flex:1; overflow-y:auto; padding:20px 24px;
+    display:grid; grid-template-columns:repeat(auto-fill,minmax(190px,1fr)); gap:14px;
+  }
+  .sample-card {
+    background:var(--bg3); border:1px solid var(--border); border-radius:12px;
+    padding:16px; cursor:pointer; transition:all .25s; position:relative;
+    overflow:hidden;
+  }
+  .sample-card::before {
+    content:''; position:absolute; top:0; left:0; right:0; height:3px;
+    background:linear-gradient(90deg,var(--accent),var(--purple)); opacity:0; transition:opacity .25s;
+  }
+  .sample-card:hover { border-color:var(--accent); transform:translateY(-3px); box-shadow:0 8px 24px rgba(0,0,0,.3),0 0 0 1px rgba(99,102,241,.2); }
+  .sample-card:hover::before { opacity:1; }
+  .sample-card.playing { border-color:var(--cyan); box-shadow:0 0 0 1px var(--cyan),0 0 20px rgba(6,182,212,.15); }
+  .sample-card.playing::before { opacity:1; background:linear-gradient(90deg,var(--cyan),var(--teal)); }
+  .sample-card .waveform {
+    height:40px; border-radius:6px; margin-bottom:12px;
+    display:flex; align-items:flex-end; gap:1.5px; overflow:hidden;
+    background:var(--bg); padding:4px;
+  }
+  .sample-card .waveform-bar {
+    flex:1; background:var(--text4); border-radius:1px;
+    transition:height .3s ease, background .3s;
+    min-height:2px;
+  }
+  .sample-card:hover .waveform-bar { background:var(--text3); }
+  .sample-card.playing .waveform-bar { background:var(--cyan); }
+  .sample-card .name { font-size:13px; font-weight:600; color:var(--text); margin-bottom:6px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .sample-card .meta { font-size:11px; color:var(--text3); display:flex; gap:10px; }
+  .sample-card .meta span { display:flex; align-items:center; gap:3px; }
+  .sample-card .play-overlay {
+    position:absolute; top:50%; left:50%; transform:translate(-50%,-50%) scale(.8);
+    width:40px; height:40px; border-radius:50%;
+    background:linear-gradient(135deg,var(--accent),var(--purple));
+    display:flex; align-items:center; justify-content:center;
+    opacity:0; transition:all .25s; pointer-events:none; box-shadow:0 4px 16px var(--accent-glow);
+  }
+  .sample-card:hover .play-overlay { opacity:1; transform:translate(-50%,-50%) scale(1); }
+  .sample-card .play-overlay svg { width:16px; height:16px; fill:#fff; }
+  .sample-card .cat-badge {
+    position:absolute; top:10px; right:10px; width:10px; height:10px; border-radius:50%;
+    box-shadow:0 0 8px currentColor;
+  }
+  .sample-card .type-tag {
+    position:absolute; top:10px; left:10px; font-size:9px; font-weight:700;
+    text-transform:uppercase; letter-spacing:.5px; color:var(--text4);
+    background:var(--bg); padding:2px 6px; border-radius:4px;
+  }
+
+  /* ===== Drum Pad ===== */
+  .pad-page { display:none; flex-direction:column; height:100%; }
+  .pad-page.active { display:flex; }
+  .pad-header {
+    text-align:center; padding:20px; color:var(--text3); font-size:13px;
+  }
+  .pad-grid {
+    flex:1; display:grid; grid-template-columns:repeat(4,1fr);
+    gap:14px; padding:0 24px 24px; max-width:520px; margin:0 auto;
+    align-content:center;
+  }
+  .pad {
+    aspect-ratio:1; border-radius:14px; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; cursor:pointer;
+    border:2px solid transparent; transition:all .12s; user-select:none;
+    position:relative; overflow:hidden; box-shadow:0 4px 12px rgba(0,0,0,.3);
+  }
+  .pad::after {
+    content:''; position:absolute; inset:0;
+    background:linear-gradient(135deg,rgba(255,255,255,.12) 0%,transparent 50%);
+    opacity:0; transition:opacity .2s;
+  }
+  .pad:hover::after { opacity:1; }
+  .pad:active, .pad.active {
+    transform:scale(.92); filter:brightness(1.25);
+    border-color:rgba(255,255,255,.4); box-shadow:0 0 20px currentColor;
+  }
+  .pad .pad-key { font-size:11px; font-weight:700; opacity:.5; margin-bottom:3px; }
+  .pad .pad-name { font-size:13px; font-weight:700; }
+  .pad .pad-glow {
+    position:absolute; bottom:8px; width:20px; height:3px; border-radius:2px;
+    background:rgba(255,255,255,.3); opacity:0; transition:opacity .1s;
+  }
+  .pad.active .pad-glow { opacity:1; background:#fff; box-shadow:0 0 8px #fff; }
+  .pad-1 { background:linear-gradient(135deg,#991b1b,#dc2626); color:#fff; }
+  .pad-2 { background:linear-gradient(135deg,#9a3412,#ea580c); color:#fff; }
+  .pad-3 { background:linear-gradient(135deg,#854d0e,#ca8a04); color:#fff; }
+  .pad-4 { background:linear-gradient(135deg,#166534,#16a34a); color:#fff; }
+  .pad-5 { background:linear-gradient(135deg,#155e75,#0891b2); color:#fff; }
+  .pad-6 { background:linear-gradient(135deg,#1e40af,#2563eb); color:#fff; }
+  .pad-7 { background:linear-gradient(135deg,#3730a3,#4f46e5); color:#fff; }
+  .pad-8 { background:linear-gradient(135deg,#5b21b6,#7c3aed); color:#fff; }
+  .pad-9 { background:linear-gradient(135deg,#701a75,#9333ea); color:#fff; }
+  .pad-10 { background:linear-gradient(135deg,#86198f,#c026d3); color:#fff; }
+  .pad-11 { background:linear-gradient(135deg,#9d174d,#db2777); color:#fff; }
+  .pad-12 { background:linear-gradient(135deg,#9f1239,#e11d48); color:#fff; }
+  .pad-13 { background:linear-gradient(135deg,#3f3f46,#52525b); color:#fff; }
+  .pad-14 { background:linear-gradient(135deg,#52525b,#71717a); color:#fff; }
+  .pad-15 { background:linear-gradient(135deg,#3f3f46,#52525b); color:#fff; }
+  .pad-16 { background:linear-gradient(135deg,#27272a,#3f3f46); color:#fff; }
+
+  /* ===== Sequencer ===== */
+  .seq-page { display:none; flex-direction:column; height:100%; }
+  .seq-page.active { display:flex; }
+  .seq-toolbar {
+    display:flex; align-items:center; gap:16px; padding:14px 24px;
+    border-bottom:1px solid var(--border); flex-shrink:0;
+  }
+  .seq-bpm {
+    display:flex; align-items:center; gap:10px; font-size:13px; color:var(--text2);
+    background:var(--bg3); padding:6px 12px; border-radius:8px; border:1px solid var(--border);
+  }
+  .seq-bpm input {
+    width:56px; padding:4px 8px; background:var(--bg); border:1px solid var(--border);
+    border-radius:6px; color:var(--text); font-size:13px; text-align:center; outline:none;
+  }
+  .seq-bpm input:focus { border-color:var(--accent); }
+  .seq-step-indicator {
+    display:flex; gap:2px;
+  }
+  .seq-step-dot {
+    width:6px; height:6px; border-radius:50%; background:var(--border);
+    transition:background .1s;
+  }
+  .seq-step-dot.active { background:var(--accent); box-shadow:0 0 6px var(--accent); }
+  .seq-grid-wrap {
+    flex:1; overflow:auto; padding:24px; display:flex; justify-content:center; align-items:center;
+  }
+  .seq-grid {
+    display:grid;
+    grid-template-columns:80px repeat(16,40px);
+    gap:4px;
+  }
+  .seq-label {
+    display:flex; align-items:center; justify-content:flex-end;
+    padding-right:14px; font-size:12px; color:var(--text3); font-weight:600;
+  }
+  .seq-header {
+    display:flex; align-items:center; justify-content:center;
+    font-size:10px; color:var(--text4); font-weight:700;
+  }
+  .seq-header.beat { color:var(--accent2); }
+  .seq-cell {
+    aspect-ratio:1; background:var(--bg3); border-radius:6px;
+    cursor:pointer; transition:all .15s; border:1px solid transparent;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .seq-cell:hover { background:var(--border); border-color:var(--text4); }
+  .seq-cell.on {
+    background:linear-gradient(135deg,var(--accent),var(--purple));
+    border-color:rgba(255,255,255,.1); box-shadow:0 2px 8px var(--accent-glow);
+  }
+  .seq-cell.on:hover { filter:brightness(1.2); }
+  .seq-cell.current { box-shadow:0 0 0 2px var(--cyan),0 0 12px rgba(6,182,212,.3); }
+  .seq-cell.beat-col { background:rgba(99,102,241,.05); }
+
+  /* ===== Player Bar ===== */
+  .player-bar {
+    height:72px; background:linear-gradient(180deg,var(--bg2),var(--bg));
+    border-top:1px solid var(--border); display:flex; align-items:center;
+    padding:0 24px; gap:20px; flex-shrink:0;
+  }
+  .transport { display:flex; gap:8px; align-items:center; }
+  .transport button {
+    width:38px; height:38px; border-radius:50%; border:none;
+    background:var(--bg3); color:var(--text2); cursor:pointer;
+    display:flex; align-items:center; justify-content:center;
+    transition:all .2s; font-size:14px; border:1px solid var(--border);
+  }
+  .transport button:hover { background:var(--border); color:var(--text); border-color:var(--text3); }
+  .transport .play-btn {
+    width:44px; height:44px; background:linear-gradient(135deg,var(--accent),var(--purple));
+    color:#fff; border:none; box-shadow:0 2px 12px var(--accent-glow); font-size:16px;
+  }
+  .transport .play-btn:hover { filter:brightness(1.15); transform:scale(1.05); }
+  .waveform-area { flex:1; display:flex; flex-direction:column; gap:6px; min-width:200px; }
+  .waveform-area .sample-name { font-size:12px; color:var(--text2); font-weight:500; }
+  .waveform-canvas {
+    height:36px; background:var(--bg3); border-radius:6px;
+    cursor:pointer; position:relative; overflow:hidden; border:1px solid var(--border);
+  }
+  .waveform-canvas .progress-bar {
+    position:absolute; top:0; left:0; height:100%; width:0%;
+    background:linear-gradient(90deg,rgba(99,102,241,.25),rgba(139,92,246,.15));
+    pointer-events:none; transition:width .05s linear;
+  }
+  .waveform-canvas .progress-line {
+    position:absolute; top:0; left:0; height:100%; width:2px;
+    background:linear-gradient(180deg,var(--accent),var(--purple));
+    pointer-events:none; opacity:0; transition:opacity .2s;
+    box-shadow:0 0 8px var(--accent);
+  }
+  .waveform-canvas:hover .progress-line { opacity:1; }
+  .waveform-canvas .wave-bars {
+    position:absolute; inset:0; display:flex; align-items:center; gap:1px; padding:0 8px;
+  }
+  .waveform-canvas .wave-bar {
+    flex:1; background:var(--text4); border-radius:1px; transition:height .3s;
+    min-height:2px;
+  }
+  .time-display { display:flex; justify-content:space-between; font-size:11px; color:var(--text3); }
+  .volume-area { display:flex; align-items:center; gap:10px; }
+  .volume-area input[type=range] {
+    width:90px; accent-color:var(--accent);
+  }
+
+  /* ===== Semantic Search ===== */
+  .search-demo { padding:32px 24px; max-width:640px; margin:0 auto; }
+  .search-input {
+    width:100%; padding:14px 20px; background:var(--bg3); border:1px solid var(--border);
+    border-radius:12px; color:var(--text); font-size:15px; outline:none;
+    transition:all .2s;
+  }
+  .search-input:focus { border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-glow); }
+  .search-input::placeholder { color:var(--text4); }
+  .search-hints {
+    display:flex; gap:8px; margin-top:12px; flex-wrap:wrap;
+  }
+  .search-hint {
+    padding:4px 12px; background:var(--bg3); border:1px solid var(--border);
+    border-radius:20px; font-size:12px; color:var(--text3); cursor:pointer;
+    transition:all .2s;
+  }
+  .search-hint:hover { border-color:var(--accent); color:var(--accent2); background:rgba(99,102,241,.08); }
+  .search-results { margin-top:20px; }
+  .result-item {
+    display:flex; align-items:center; gap:14px; padding:14px;
+    border-radius:10px; transition:all .2s; cursor:pointer;
+    border:1px solid transparent; margin-bottom:6px;
+  }
+  .result-item:hover { background:var(--bg3); border-color:var(--border); }
+  .result-score {
+    padding:4px 12px; background:linear-gradient(135deg,rgba(99,102,241,.15),rgba(139,92,246,.15));
+    border-radius:6px; font-size:12px; color:var(--accent2); font-weight:700;
+    white-space:nowrap; border:1px solid rgba(99,102,241,.2);
+  }
+  .result-info { flex:1; }
+  .result-info .name { font-size:14px; color:var(--text); font-weight:600; }
+  .result-info .detail { font-size:12px; color:var(--text3); margin-top:3px; }
+  .result-wave { width:64px; height:24px; border-radius:4px; flex-shrink:0; }
+
+  /* ===== Tab Content ===== */
+  .tab-content { display:none; flex-direction:column; height:100%; }
+  .tab-content.active { display:flex; }
+
+  /* ===== Empty State ===== */
+  .empty-state {
+    grid-column:1/-1; text-align:center; padding:80px 20px; color:var(--text4);
+  }
+  .empty-state .icon { font-size:56px; margin-bottom:20px; opacity:.5; }
+  .empty-state .title { font-size:18px; color:var(--text3); margin-bottom:8px; }
+  .empty-state .desc { font-size:14px; }
+
+  /* ===== Scrollbar ===== */
+  ::-webkit-scrollbar { width:5px; height:5px; }
+  ::-webkit-scrollbar-track { background:transparent; }
+  ::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
+  ::-webkit-scrollbar-thumb:hover { background:var(--text4); }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="header">
+    <div class="logo">
+      <div class="logo-icon">🎵</div>
+      <div class="logo-text">SamplerHub <span>v1.0.0 Demo</span></div>
+    </div>
+    <div class="nav">
+      <button class="nav-btn active" onclick="switchTab('library')">采样库</button>
+      <button class="nav-btn" onclick="switchTab('pad')">鼓垫</button>
+      <button class="nav-btn" onclick="switchTab('sequencer')">音序器</button>
+      <button class="nav-btn" onclick="switchTab('search')">语义搜索</button>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="sidebar" id="sidebar">
+      <div class="sidebar-title">分类</div>
+      <div id="categoryList"></div>
+    </div>
+
+    <div class="content">
+      <!-- Library -->
+      <div class="tab-content active" id="tab-library">
+        <div class="toolbar">
+          <input class="search-box" type="text" id="libSearch" placeholder="搜索采样..." oninput="filterSamples()">
+          <button class="btn btn-primary" onclick="generateSamples()">🔄 生成示例</button>
+          <button class="btn" onclick="clearSamples()">清空</button>
+        </div>
+        <div class="sample-grid" id="sampleGrid"></div>
+      </div>
+
+      <!-- Pad -->
+      <div class="tab-content" id="tab-pad">
+        <div class="pad-page active">
+          <div class="pad-header">点击鼓垫或按键盘 1-4 / Q-R / A-F / Z-V 触发音频</div>
+          <div class="pad-grid" id="padGrid"></div>
+        </div>
+      </div>
+
+      <!-- Sequencer -->
+      <div class="tab-content" id="tab-sequencer">
+        <div class="seq-page active">
+          <div class="seq-toolbar">
+            <div class="transport">
+              <button onclick="seqToggle()" id="seqPlayBtn">▶</button>
+            </div>
+            <div class="seq-bpm">
+              <span>🎵 BPM</span>
+              <input type="number" id="seqBpm" value="120" min="60" max="200" onchange="updateBpm()">
+            </div>
+            <div class="seq-step-indicator" id="stepIndicator"></div>
+            <div style="flex:1"></div>
+            <button class="btn" onclick="seqClear()">清空</button>
+            <button class="btn" onclick="seqRandom()">🎲 随机</button>
+          </div>
+          <div class="seq-grid-wrap">
+            <div class="seq-grid" id="seqGrid"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Search -->
+      <div class="tab-content" id="tab-search">
+        <div class="search-demo">
+          <input class="search-input" type="text" id="semanticSearch" placeholder="试试输入：温暖的钢琴、沉重的 808、Lo-Fi 鼓点..." oninput="handleSemanticSearch(this.value)">
+          <div class="search-hints">
+            <span class="search-hint" onclick="setSearch('温暖的钢琴')">温暖的钢琴</span>
+            <span class="search-hint" onclick="setSearch('沉重的 808')">沉重的 808</span>
+            <span class="search-hint" onclick="setSearch('Lo-Fi 鼓点')">Lo-Fi 鼓点</span>
+            <span class="search-hint" onclick="setSearch('明亮的合成器')">明亮的合成器</span>
+          </div>
+          <div class="search-results" id="searchResults"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Player Bar -->
+  <div class="player-bar">
+    <div class="transport">
+      <button onclick="prevSample()">⏮</button>
+      <button class="play-btn" onclick="togglePlay()" id="playBtn">▶</button>
+      <button onclick="nextSample()">⏭</button>
+    </div>
+    <div class="waveform-area">
+      <div class="sample-name" id="playerName">未选择采样</div>
+      <div class="waveform-canvas" id="waveformCanvas" onclick="seekWaveform(event)">
+        <div class="progress-bar" id="progressBar"></div>
+        <div class="progress-line" id="progressLine"></div>
+        <div class="wave-bars" id="playerWaveBars"></div>
+      </div>
+      <div class="time-display">
+        <span id="currentTime">0:00</span>
+        <span id="totalTime">0:00</span>
+      </div>
+    </div>
+    <div class="volume-area">
+      <span>🔊</span>
+      <input type="range" min="0" max="100" value="80" oninput="setVolume(this.value/100)">
+    </div>
+  </div>
+</div>
+
+<script>
+// ===================== Audio Engine =====================
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+let currentSource = null;
+let currentGain = null;
+let isPlaying = false;
+let currentSample = null;
+let playStartTime = 0;
+let pauseOffset = 0;
+let volume = 0.8;
+let progressInterval = null;
+
+function formatTime(s) {
+  if (!s || isNaN(s)) return '0:00';
+  const m = Math.floor(s / 60);
+  const sec = Math.floor(s % 60);
+  return `${m}:${sec.toString().padStart(2,'0')}`;
+}
+
+function playSample(sample, offset = 0) {
+  if (!sample || !sample.buffer) return;
+  stopSample();
+
+  currentGain = audioCtx.createGain();
+  currentGain.gain.value = volume;
+  currentGain.connect(audioCtx.destination);
+
+  currentSource = audioCtx.createBufferSource();
+  currentSource.buffer = sample.buffer;
+  currentSource.connect(currentGain);
+  currentSource.onended = () => {
+    if (isPlaying) {
+      isPlaying = false;
+      pauseOffset = 0;
+      updatePlayBtn();
+      clearInterval(progressInterval);
+      renderSamples();
+      updatePlayerWaveform(null);
+    }
+  };
+
+  currentSource.start(0, offset);
+  playStartTime = audioCtx.currentTime - offset;
+  isPlaying = true;
+  currentSample = sample;
+  updatePlayBtn();
+  document.getElementById('playerName').textContent = sample.name;
+  document.getElementById('totalTime').textContent = formatTime(sample.duration);
+
+  clearInterval(progressInterval);
+  progressInterval = setInterval(updateProgress, 50);
+  renderSamples();
+  updatePlayerWaveform(sample.waveform);
+}
+
+function stopSample() {
+  if (currentSource) {
+    try { currentSource.stop(); } catch(e){}
+    currentSource = null;
+  }
+  isPlaying = false;
+  updatePlayBtn();
+  clearInterval(progressInterval);
+}
+
+function togglePlay() {
+  if (!currentSample) return;
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  if (isPlaying) {
+    pauseOffset = audioCtx.currentTime - playStartTime;
+    stopSample();
+  } else {
+    playSample(currentSample, pauseOffset);
+  }
+}
+
+function updatePlayBtn() {
+  document.getElementById('playBtn').textContent = isPlaying ? '⏸' : '▶';
+}
+
+function updateProgress() {
+  if (!currentSample || !isPlaying) return;
+  const elapsed = audioCtx.currentTime - playStartTime;
+  const progress = Math.min(elapsed / currentSample.duration, 1);
+  document.getElementById('progressBar').style.width = (progress * 100) + '%';
+  document.getElementById('currentTime').textContent = formatTime(elapsed);
+  if (progress >= 0.999) {
+    stopSample();
+    pauseOffset = 0;
+    document.getElementById('progressBar').style.width = '0%';
+    document.getElementById('currentTime').textContent = '0:00';
+  }
+}
+
+function seekWaveform(e) {
+  if (!currentSample) return;
+  const rect = e.currentTarget.getBoundingClientRect();
+  const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+  pauseOffset = ratio * currentSample.duration;
+  if (isPlaying) playSample(currentSample, pauseOffset);
+  else {
+    document.getElementById('progressBar').style.width = (ratio * 100) + '%';
+    document.getElementById('currentTime').textContent = formatTime(pauseOffset);
+  }
+}
+
+function updatePlayerWaveform(waveform) {
+  const container = document.getElementById('playerWaveBars');
+  if (!waveform) {
+    container.innerHTML = '';
+    return;
+  }
+  container.innerHTML = waveform.map(h =>
+    `<div class="wave-bar" style="height:${Math.max(h * 100, 4)}%"></div>`
+  ).join('');
+}
+
+function setVolume(v) { volume = v; if (currentGain) currentGain.gain.value = v; }
+function prevSample() { if (!currentSample || !samples.length) return; const idx = samples.findIndex(s => s.id === currentSample.id); const prev = samples[(idx - 1 + samples.length) % samples.length]; if (prev) { pauseOffset = 0; playSampleById(prev.id); } }
+function nextSample() { if (!currentSample || !samples.length) return; const idx = samples.findIndex(s => s.id === currentSample.id); const next = samples[(idx + 1) % samples.length]; if (next) { pauseOffset = 0; playSampleById(next.id); } }
+
+// ===================== Sample Data - Correct Category Mapping =====================
+const categoryDefs = [
+  { name:'Drums', color:'#ef4444', types:['kick','snare','hihat'], subs:{
+    kick:['Kick_Heavy','Kick_Deep','Kick_Punchy','Kick_Sub','Kick_Acoustic'],
+    snare:['Snare_Crisp','Snare_Tight','Snare_Rim','Snare_Brush','Snare_Clap'],
+    hihat:['HiHat_Closed','HiHat_Open','HiHat_Pedal','HiHat_Shaker']
+  }},
+  { name:'Bass', color:'#38bdf8', types:['bass'], subs:{
+    bass:['808_Deep','Sub_Bass','Bass_Synth','Bass_Acoustic','Bass_Finger']
+  }},
+  { name:'Synths', color:'#818cf8', types:['synth','pad'], subs:{
+    synth:['Synth_Lead','Synth_Pluck','Synth_Stab','Synth_Arpeggio','Synth_Chord'],
+    pad:['Pad_Warm','Pad_Ambient','Pad_Strings','Pad_Dark','Pad_Bright']
+  }},
+  { name:'Instruments', color:'#f59e0b', types:['synth'], subs:{
+    synth:['Piano_Warm','Piano_Bright','Guitar_Acoustic','Guitar_Electric','Violin','Cello','Strings_Ensemble']
+  }},
+  { name:'Loops', color:'#a3e635', types:['kick','snare','hihat'], subs:{
+    kick:['DrumLoop_Full','DrumLoop_Top','PercLoop_Latin'],
+    snare:['BassLoop_Deep','BassLine_Groove'],
+    hihat:['SynthLoop_Melodic','ChordLoop_Progression']
+  }},
+  { name:'Vocal & FX', color:'#fb7185', types:['snare','synth'], subs:{
+    snare:['Vocal_Lead','Vocal_Chop','Vocal_Hook','Shout','Whisper'],
+    synth:['FX_Riser','FX_Impact','FX_Sweep','FX_Transition','FX_OneShot']
+  }},
+];
+
+let samples = [];
+let activeCategory = null;
+
+function generateAudioBuffer(duration, type) {
+  const sampleRate = audioCtx.sampleRate;
+  const length = Math.floor(sampleRate * duration);
+  const buffer = audioCtx.createBuffer(1, length, sampleRate);
+  const data = buffer.getChannelData(0);
+
+  for (let i = 0; i < length; i++) {
+    const t = i / sampleRate;
+    let val = 0;
+    switch(type) {
+      case 'kick':
+        val = Math.sin(2 * Math.PI * (160 - t * 120) * t) * Math.exp(-t * 10);
+        val += Math.sin(2 * Math.PI * 60 * t) * Math.exp(-t * 5) * 0.5;
+        break;
+      case 'snare':
+        val = (Math.random() * 2 - 1) * Math.exp(-t * 8);
+        val += Math.sin(2 * Math.PI * 180 * t) * Math.exp(-t * 12) * 0.4;
+        val += Math.sin(2 * Math.PI * 400 * t) * Math.exp(-t * 20) * 0.2;
+        break;
+      case 'hihat':
+        val = (Math.random() * 2 - 1) * Math.exp(-t * 40) * 0.5;
+        val += (Math.random() * 2 - 1) * Math.exp(-t * 80) * 0.3;
+        break;
+      case 'bass':
+        val = Math.sin(2 * Math.PI * 55 * t) * 0.6;
+        val += Math.sin(2 * Math.PI * 110 * t) * 0.3;
+        val += Math.sin(2 * Math.PI * 165 * t) * 0.15;
+        val *= Math.exp(-t * 0.5);
+        break;
+      case 'synth':
+        val = Math.sin(2 * Math.PI * 440 * t) * 0.25;
+        val += Math.sin(2 * Math.PI * 660 * t) * 0.15;
+        val += Math.sin(2 * Math.PI * 880 * t) * 0.1;
+        val *= Math.exp(-t * 1.5);
+        break;
+      case 'pad':
+        val = Math.sin(2 * Math.PI * 261.63 * t) * 0.15;
+        val += Math.sin(2 * Math.PI * 329.63 * t) * 0.12;
+        val += Math.sin(2 * Math.PI * 392.00 * t) * 0.1;
+        val += Math.sin(2 * Math.PI * 523.25 * t) * 0.08;
+        val *= 0.8 + 0.2 * Math.sin(2 * Math.PI * 0.5 * t);
+        break;
+      default:
+        val = Math.sin(2 * Math.PI * 440 * t) * Math.exp(-t * 2);
+    }
+    data[i] = Math.max(-1, Math.min(1, val * 0.5));
+  }
+  return buffer;
+}
+
+function generateWaveformData(buffer) {
+  const raw = buffer.getChannelData(0);
+  const bars = 40;
+  const block = Math.floor(raw.length / bars);
+  const result = [];
+  for (let i = 0; i < bars; i++) {
+    let sum = 0;
+    for (let j = 0; j < block; j++) sum += Math.abs(raw[i * block + j] || 0);
+    result.push(sum / block);
+  }
+  const max = Math.max(...result, 0.001);
+  return result.map(v => v / max);
+}
+
+function generateSamples() {
+  samples = [];
+  let id = 1;
+
+  categoryDefs.forEach(cat => {
+    const catTypes = cat.types;
+    const allSubs = [];
+    catTypes.forEach(t => {
+      if (cat.subs[t]) cat.subs[t].forEach(name => allSubs.push({ name, type: t }));
+    });
+
+    allSubs.forEach((sub, idx) => {
+      const duration = 0.8 + Math.random() * 2.5;
+      const bpm = sub.type === 'pad' ? 0 : Math.floor(80 + Math.random() * 90);
+      const keys = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B','Am','Em','Dm','Gm'];
+      const key = sub.type === 'pad' ? null : keys[Math.floor(Math.random() * keys.length)];
+      const buffer = generateAudioBuffer(duration, sub.type);
+      const waveform = generateWaveformData(buffer);
+
+      samples.push({
+        id: id++,
+        name: sub.name + '_' + String(idx + 1).padStart(2, '0') + '.wav',
+        category: cat.name,
+        subCategory: sub.name.split('_')[0],
+        color: cat.color,
+        duration, bpm, key, buffer, waveform, type: sub.type,
+      });
+    });
+  });
+
+  renderCategories();
+  renderSamples();
+}
+
+function clearSamples() {
+  samples = [];
+  renderSamples();
+  document.getElementById('sampleGrid').innerHTML = `
+    <div class="empty-state">
+      <div class="icon">🎵</div>
+      <div class="title">采样库为空</div>
+      <div class="desc">点击上方"生成示例"按钮生成模拟采样数据</div>
+    </div>`;
+}
+
+// ===================== UI Rendering =====================
+function renderCategories() {
+  const container = document.getElementById('categoryList');
+  container.innerHTML = categoryDefs.map(cat => {
+    const count = samples.filter(s => s.category === cat.name).length;
+    return `
+    <div>
+      <div class="cat-item ${activeCategory === cat.name ? 'active' : ''}" onclick="selectCategory('${cat.name}')">
+        <div class="cat-dot" style="background:${cat.color};color:${cat.color}"></div>
+        <span>${cat.name}</span>
+        ${count > 0 ? `<span class="cat-count">${count}</span>` : ''}
+        <span class="cat-arrow ${activeCategory === cat.name ? 'expanded' : ''}">▶</span>
+      </div>
+      ${activeCategory === cat.name ? `
+        <div class="subcat">
+          ${[...new Set(samples.filter(s => s.category === cat.name).map(s => s.subCategory))]
+            .map(sub => `<div class="subcat-item" onclick="event.stopPropagation();filterBySub('${sub}')">${sub}</div>`).join('')}
+        </div>
+      ` : ''}
+    </div>`;
+  }).join('');
+}
+
+function selectCategory(name) {
+  activeCategory = activeCategory === name ? null : name;
+  renderCategories();
+  renderSamples();
+}
+
+function filterBySub(sub) {
+  document.getElementById('libSearch').value = sub;
+  filterSamples();
+}
+
+function renderSamples() {
+  const grid = document.getElementById('sampleGrid');
+  const search = document.getElementById('libSearch').value.toLowerCase().trim();
+
+  let filtered = samples;
+  if (activeCategory) filtered = filtered.filter(s => s.category === activeCategory);
+  if (search) filtered = filtered.filter(s =>
+    s.name.toLowerCase().includes(search) ||
+    s.subCategory.toLowerCase().includes(search) ||
+    s.category.toLowerCase().includes(search)
+  );
+
+  if (filtered.length === 0) {
+    grid.innerHTML = `<div class="empty-state"><div class="icon">🔍</div><div class="title">未找到匹配</div><div class="desc">尝试其他搜索词或分类</div></div>`;
+    return;
+  }
+
+  grid.innerHTML = filtered.map(s => `
+    <div class="sample-card ${currentSample?.id === s.id && isPlaying ? 'playing' : ''}" onclick="playSampleById(${s.id})" data-id="${s.id}">
+      <div class="type-tag">${s.type.toUpperCase()}</div>
+      <div class="cat-badge" style="background:${s.color}"></div>
+      <div class="waveform">
+        ${s.waveform.map(h => `<div class="waveform-bar" style="height:${Math.max(h * 100, 6)}%"></div>`).join('')}
+      </div>
+      <div class="name">${s.name.replace(/\.wav$/,'')}</div>
+      <div class="meta">
+        <span>⏱ ${s.duration.toFixed(1)}s</span>
+        ${s.bpm ? `<span>🎵 ${s.bpm}</span>` : ''}
+        ${s.key ? `<span>🎹 ${s.key}</span>` : ''}
+      </div>
+      <div class="play-overlay">
+        <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+      </div>
+    </div>
+  `).join('');
+}
+
+function filterSamples() { renderSamples(); }
+
+function playSampleById(id) {
+  const sample = samples.find(s => s.id === id);
+  if (sample) {
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    pauseOffset = 0;
+    playSample(sample);
+    renderSamples();
+  }
+}
+
+// ===================== Drum Pad =====================
+const padConfig = [
+  { id:'p1', key:'1', name:'Kick', type:'kick', cls:'pad-1' },
+  { id:'p2', key:'2', name:'Snare', type:'snare', cls:'pad-2' },
+  { id:'p3', key:'3', name:'Clap', type:'snare', cls:'pad-3' },
+  { id:'p4', key:'4', name:'Hi-Hat', type:'hihat', cls:'pad-4' },
+  { id:'p5', key:'Q', name:'Open HH', type:'hihat', cls:'pad-5' },
+  { id:'p6', key:'W', name:'808', type:'bass', cls:'pad-6' },
+  { id:'p7', key:'E', name:'Perc', type:'kick', cls:'pad-7' },
+  { id:'p8', key:'R', name:'Rim', type:'snare', cls:'pad-8' },
+  { id:'p9', key:'A', name:'Tom', type:'kick', cls:'pad-9' },
+  { id:'p10', key:'S', name:'Crash', type:'snare', cls:'pad-10' },
+  { id:'p11', key:'D', name:'Ride', type:'hihat', cls:'pad-11' },
+  { id:'p12', key:'F', name:'Shaker', type:'hihat', cls:'pad-12' },
+  { id:'p13', key:'Z', name:'Sub', type:'bass', cls:'pad-13' },
+  { id:'p14', key:'X', name:'Synth', type:'synth', cls:'pad-14' },
+  { id:'p15', key:'C', name:'Pad', type:'pad', cls:'pad-15' },
+  { id:'p16', key:'V', name:'FX', type:'synth', cls:'pad-16' },
+];
+
+let padBuffers = {};
+
+function initPads() {
+  const grid = document.getElementById('padGrid');
+  grid.innerHTML = padConfig.map(p => `
+    <div class="pad ${p.cls}" data-key="${p.key}" data-type="${p.type}" onmousedown="triggerPad('${p.id}')">
+      <span class="pad-key">${p.key}</span>
+      <span class="pad-name">${p.name}</span>
+      <span class="pad-glow"></span>
+    </div>
+  `).join('');
+
+  padConfig.forEach(p => {
+    padBuffers[p.id] = generateAudioBuffer(0.5 + Math.random() * 0.8, p.type);
+  });
+}
+
+function triggerPad(padId) {
+  const pad = padConfig.find(p => p.id === padId);
+  if (!pad) return;
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+
+  const gain = audioCtx.createGain();
+  gain.gain.value = volume;
+  gain.connect(audioCtx.destination);
+
+  const src = audioCtx.createBufferSource();
+  src.buffer = padBuffers[padId];
+  src.connect(gain);
+  src.start();
+
+  const el = document.querySelector(`[data-key="${pad.key}"]`);
+  if (el) {
+    el.classList.add('active');
+    setTimeout(() => el.classList.remove('active'), 120);
+  }
+}
+
+const keyMap = {'1':'p1','2':'p2','3':'p3','4':'p4','q':'p5','w':'p6','e':'p7','r':'p8','a':'p9','s':'p10','d':'p11','f':'p12','z':'p13','x':'p14','c':'p15','v':'p16'};
+document.addEventListener('keydown', e => {
+  const pid = keyMap[e.key.toLowerCase()];
+  if (pid) triggerPad(pid);
+});
+
+// ===================== Sequencer =====================
+let seqPlaying = false;
+let seqStep = 0;
+let seqInterval = null;
+let seqBpm = 120;
+const seqTracks = [
+  { name:'Kick', type:'kick', color:'#ef4444' },
+  { name:'Snare', type:'snare', color:'#f97316' },
+  { name:'Hi-Hat', type:'hihat', color:'#eab308' },
+  { name:'808', type:'bass', color:'#3b82f6' },
+];
+
+function initSequencer() {
+  const grid = document.getElementById('seqGrid');
+  let html = '';
+
+  // Header row
+  html += `<div class="seq-label"></div>`;
+  for (let i = 0; i < 16; i++) {
+    html += `<div class="seq-header ${i % 4 === 0 ? 'beat' : ''}">${i + 1}</div>`;
+  }
+
+  // Track rows
+  seqTracks.forEach((track, ti) => {
+    html += `<div class="seq-label" style="color:${track.color}">${track.name}</div>`;
+    for (let i = 0; i < 16; i++) {
+      const beatCol = i % 4 === 0 ? 'beat-col' : '';
+      html += `<div class="seq-cell ${beatCol}" data-track="${ti}" data-step="${i}" onclick="toggleSeqStep(${ti},${i})"></div>`;
+    }
+  });
+
+  grid.innerHTML = html;
+
+  // Step indicator
+  const indicator = document.getElementById('stepIndicator');
+  indicator.innerHTML = Array(16).fill(0).map((_, i) =>
+    `<div class="seq-step-dot" id="stepDot${i}"></div>`
+  ).join('');
+
+  // Default pattern
+  const defaults = [[0,4,8,12], [4,12], [0,2,4,6,8,10,12,14], [0,10]];
+  defaults.forEach((steps, ti) => {
+    steps.forEach(si => {
+      const cell = document.querySelector(`[data-track="${ti}"][data-step="${si}"]`);
+      if (cell) cell.classList.add('on');
+    });
+  });
+}
+
+function toggleSeqStep(track, step) {
+  const cell = document.querySelector(`[data-track="${track}"][data-step="${step}"]`);
+  cell.classList.toggle('on');
+  if (cell.classList.contains('on')) {
+    const buf = generateAudioBuffer(0.3, seqTracks[track].type);
+    const gain = audioCtx.createGain(); gain.gain.value = volume * 0.5;
+    gain.connect(audioCtx.destination);
+    const src = audioCtx.createBufferSource(); src.buffer = buf;
+    src.connect(gain); src.start();
+  }
+}
+
+function seqToggle() {
+  if (seqPlaying) seqStop(); else seqPlay();
+}
+
+function seqPlay() {
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  seqPlaying = true;
+  document.getElementById('seqPlayBtn').textContent = '⏸';
+  const stepTime = 60 / seqBpm / 4;
+
+  // Play first step immediately
+  playSeqStep();
+
+  seqInterval = setInterval(() => {
+    seqStep = (seqStep + 1) % 16;
+    playSeqStep();
+  }, stepTime * 1000);
+}
+
+function playSeqStep() {
+  // Update indicator
+  document.querySelectorAll('.seq-step-dot').forEach((d, i) => {
+    d.classList.toggle('active', i === seqStep);
+  });
+
+  // Update cell highlights
+  document.querySelectorAll('.seq-cell.current').forEach(c => c.classList.remove('current'));
+
+  // Play active steps
+  seqTracks.forEach((track, ti) => {
+    const cell = document.querySelector(`[data-track="${ti}"][data-step="${seqStep}"]`);
+    if (cell) {
+      cell.classList.add('current');
+      if (cell.classList.contains('on')) {
+        const buf = generateAudioBuffer(0.25, track.type);
+        const gain = audioCtx.createGain(); gain.gain.value = volume * 0.45;
+        gain.connect(audioCtx.destination);
+        const src = audioCtx.createBufferSource(); src.buffer = buf;
+        src.connect(gain); src.start();
+      }
+    }
+  });
+}
+
+function seqStop() {
+  seqPlaying = false;
+  document.getElementById('seqPlayBtn').textContent = '▶';
+  clearInterval(seqInterval);
+  document.querySelectorAll('.seq-cell.current').forEach(c => c.classList.remove('current'));
+  document.querySelectorAll('.seq-step-dot').forEach(d => d.classList.remove('active'));
+  seqStep = 0;
+}
+
+function updateBpm() {
+  seqBpm = parseInt(document.getElementById('seqBpm').value) || 120;
+  if (seqPlaying) { seqStop(); setTimeout(seqPlay, 50); }
+}
+
+function seqClear() {
+  document.querySelectorAll('.seq-cell.on').forEach(c => c.classList.remove('on'));
+}
+
+function seqRandom() {
+  seqClear();
+  seqTracks.forEach((_, ti) => {
+    for (let i = 0; i < 16; i++) {
+      if (Math.random() > 0.55) {
+        const cell = document.querySelector(`[data-track="${ti}"][data-step="${i}"]`);
+        if (cell) cell.classList.add('on');
+      }
+    }
+  });
+}
+
+// ===================== Semantic Search =====================
+const semanticDB = [
+  { name:'Warm_Piano_Chords_01.wav', cat:'Piano', bpm:90, key:'C', score:0.95, color:'#f59e0b', tags:['钢琴','温暖','和弦'] },
+  { name:'Deep_808_Bass_C.wav', cat:'808 Bass', bpm:80, key:'C', score:0.91, color:'#22d3ee', tags:['808','沉重','低音'] },
+  { name:'LoFi_Drum_Loop_03.wav', cat:'Drum Loop', bpm:85, key:'-', score:0.88, color:'#f472b6', tags:['鼓点','Lo-Fi','循环'] },
+  { name:'Soft_Piano_Melody_02.wav', cat:'Piano', bpm:100, key:'Am', score:0.85, color:'#f59e0b', tags:['钢琴','柔和','旋律'] },
+  { name:'Heavy_808_Sub_Drop.wav', cat:'808 Bass', bpm:140, key:'D#', score:0.82, color:'#22d3ee', tags:['808','沉重','Sub'] },
+  { name:'Vintage_Drum_Break.wav', cat:'Drum Loop', bpm:95, key:'-', score:0.79, color:'#f472b6', tags:['鼓点','复古','Break'] },
+  { name:'Gentle_Piano_Arpeggio.wav', cat:'Piano', bpm:120, key:'F', score:0.76, color:'#f59e0b', tags:['钢琴','轻柔','琶音'] },
+  { name:'Trap_808_Pattern_01.wav', cat:'808 Bass', bpm:150, key:'G', score:0.73, color:'#22d3ee', tags:['808','Trap','节奏'] },
+  { name:'Bright_Synth_Lead_01.wav', cat:'Synth Lead', bpm:128, key:'A', score:0.71, color:'#818cf8', tags:['合成器','明亮','Lead'] },
+  { name:'Ambient_Pad_Drone.wav', cat:'Pad', bpm:0, key:'-', score:0.69, color:'#67e8f9', tags:['Pad','氛围','Drone'] },
+];
+
+function setSearch(text) {
+  document.getElementById('semanticSearch').value = text;
+  handleSemanticSearch(text);
+}
+
+function handleSemanticSearch(query) {
+  const resultsDiv = document.getElementById('searchResults');
+  if (!query.trim()) {
+    resultsDiv.innerHTML = '';
+    return;
+  }
+
+  const q = query.toLowerCase();
+  let matched = semanticDB.filter(s => {
+    return s.tags.some(t => q.includes(t)) ||
+           s.name.toLowerCase().includes(q) ||
+           s.cat.toLowerCase().includes(q) ||
+           (q.includes('钢琴') && s.cat === 'Piano') ||
+           (q.includes('808') && s.cat === '808 Bass') ||
+           (q.includes('鼓') && s.cat === 'Drum Loop') ||
+           (q.includes('lo') && s.cat === 'Drum Loop') ||
+           (q.includes('温暖') && s.tags.includes('温暖')) ||
+           (q.includes('沉重') && s.tags.includes('沉重')) ||
+           (q.includes('柔和') && s.tags.includes('柔和')) ||
+           (q.includes('明亮') && s.tags.includes('明亮'));
+  });
+
+  if (matched.length === 0) {
+    matched = semanticDB.slice(0, 3).map(s => ({...s, score: s.score * 0.5}));
+  }
+
+  resultsDiv.innerHTML = matched.map(s => {
+    const bars = Array(20).fill(0).map(() => Math.random());
+    return `
+      <div class="result-item" onclick="playSemantic('${s.name}')">
+        <div class="result-score">${Math.round(s.score * 100)}%</div>
+        <div class="result-info">
+          <div class="name">${s.name}</div>
+          <div class="detail">${s.cat} | ${s.bpm ? s.bpm + ' BPM' : 'N/A'} | ${s.key || 'N/A'}</div>
+        </div>
+        <div class="result-wave" style="background:linear-gradient(90deg,${s.color},${s.color}88,${s.color})">
+          ${bars.map(h => `<div style="display:inline-block;width:2px;height:${Math.max(h*100,15)}%;background:rgba(255,255,255,.3);margin-right:1px;vertical-align:bottom;border-radius:1px"></div>`).join('')}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function playSemantic(name) {
+  const type = name.includes('808') ? 'bass' : name.includes('Drum') ? 'kick' : 'synth';
+  const buf = generateAudioBuffer(1.5, type);
+  pauseOffset = 0;
+  playSample({ id: -1, name, buffer: buf, duration: 1.5, waveform: generateWaveformData(buf) });
+}
+
+// ===================== Tab Switching =====================
+function switchTab(tab) {
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + tab).classList.add('active');
+  event.target.classList.add('active');
+
+  if (tab === 'pad' && !document.getElementById('padGrid').children.length) initPads();
+  if (tab === 'sequencer' && !document.getElementById('seqGrid').children.length) initSequencer();
+}
+
+// ===================== Init =====================
+window.addEventListener('DOMContentLoaded', () => {
+  generateSamples();
+});
+</script>
+</body>
+</html>

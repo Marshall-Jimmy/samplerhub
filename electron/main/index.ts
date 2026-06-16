@@ -538,12 +538,12 @@ app.whenReady().then(async () => {
       perfMonitor.recordMetric('databaseInit', Date.now() - initStart)
       startAutoBackup()
 
-      // 延迟 2 秒再启动文件监控，让窗口先完成加载、UI 先响应
+      // 延迟 15 秒再启动文件监控，让窗口先完成加载、UI 先响应
       setTimeout(() => {
         startWatchingAllFolders().catch(err => {
           console.warn('[Watcher] Failed to start file watchers:', err)
         })
-      }, 2000)
+      }, 15000)
 
       // 异步初始化 essentia.js WASM（不阻塞其他初始化）
       initEssentia().catch(err => {

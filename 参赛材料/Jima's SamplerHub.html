@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jima's SamplerHub - 创意提案</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            background: #0a0a0f;
+            color: #e4e4e7;
+            line-height: 1.7;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 40px 24px;
+        }
+        .hero {
+            text-align: center;
+            padding: 60px 0 40px;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            border-radius: 16px;
+            margin-bottom: 40px;
+            position: relative;
+            overflow: hidden;
+        }
+        .hero::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(99,102,241,0.1) 0%, transparent 70%);
+            animation: pulse 4s ease-in-out infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); opacity: 0.5; }
+            50% { transform: scale(1.1); opacity: 0.8; }
+        }
+        .hero-content { position: relative; z-index: 1; }
+        .hero h1 {
+            font-size: 42px;
+            font-weight: 800;
+            background: linear-gradient(90deg, #818cf8, #c084fc, #f472b6);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 12px;
+        }
+        .hero .subtitle {
+            font-size: 18px;
+            color: #a1a1aa;
+            margin-bottom: 24px;
+        }
+        .hero .tag {
+            display: inline-block;
+            padding: 6px 16px;
+            background: rgba(99,102,241,0.2);
+            border: 1px solid rgba(99,102,241,0.4);
+            border-radius: 20px;
+            font-size: 14px;
+            color: #818cf8;
+        }
+        .section {
+            background: #14141b;
+            border-radius: 12px;
+            padding: 32px;
+            margin-bottom: 24px;
+            border: 1px solid #27272a;
+        }
+        .section h2 {
+            font-size: 24px;
+            font-weight: 700;
+            color: #fafafa;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .section h2 .icon {
+            width: 36px;
+            height: 36px;
+            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+        }
+        .section h3 {
+            font-size: 18px;
+            font-weight: 600;
+            color: #d4d4d8;
+            margin: 20px 0 12px;
+        }
+        .section p {
+            color: #a1a1aa;
+            margin-bottom: 12px;
+        }
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 16px;
+            margin-top: 20px;
+        }
+        .feature-card {
+            background: #1c1c24;
+            border-radius: 10px;
+            padding: 20px;
+            border: 1px solid #27272a;
+            transition: all 0.3s ease;
+        }
+        .feature-card:hover {
+            border-color: #6366f1;
+            transform: translateY(-2px);
+        }
+        .feature-card .emoji {
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+        .feature-card h4 {
+            font-size: 16px;
+            font-weight: 600;
+            color: #fafafa;
+            margin-bottom: 8px;
+        }
+        .feature-card p {
+            font-size: 14px;
+            color: #71717a;
+            margin: 0;
+        }
+        .tech-stack {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 16px;
+        }
+        .tech-tag {
+            padding: 6px 14px;
+            background: #1c1c24;
+            border: 1px solid #3f3f46;
+            border-radius: 8px;
+            font-size: 13px;
+            color: #d4d4d8;
+        }
+        .highlight-box {
+            background: linear-gradient(135deg, rgba(99,102,241,0.1), rgba(139,92,246,0.1));
+            border: 1px solid rgba(99,102,241,0.3);
+            border-radius: 10px;
+            padding: 20px;
+            margin: 16px 0;
+        }
+        .highlight-box p {
+            color: #c4b5fd;
+            margin: 0;
+        }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+            margin-top: 20px;
+        }
+        .stat-item {
+            text-align: center;
+            padding: 20px;
+            background: #1c1c24;
+            border-radius: 10px;
+        }
+        .stat-item .number {
+            font-size: 32px;
+            font-weight: 800;
+            background: linear-gradient(90deg, #818cf8, #c084fc);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .stat-item .label {
+            font-size: 13px;
+            color: #71717a;
+            margin-top: 4px;
+        }
+        .screenshot-placeholder {
+            background: #1c1c24;
+            border-radius: 10px;
+            padding: 40px;
+            text-align: center;
+            border: 2px dashed #3f3f46;
+            margin: 20px 0;
+        }
+        .screenshot-placeholder p {
+            color: #52525b;
+            font-size: 14px;
+        }
+        .cta {
+            text-align: center;
+            padding: 40px;
+            background: linear-gradient(135deg, #1a1a2e, #16213e);
+            border-radius: 16px;
+            margin-top: 40px;
+        }
+        .cta h2 {
+            justify-content: center;
+            font-size: 28px;
+        }
+        .cta p {
+            color: #a1a1aa;
+            margin: 12px 0 24px;
+        }
+        .btn {
+            display: inline-block;
+            padding: 14px 32px;
+            background: linear-gradient(90deg, #6366f1, #8b5cf6);
+            color: white;
+            text-decoration: none;
+            border-radius: 10px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(99,102,241,0.4);
+        }
+        .timeline {
+            position: relative;
+            padding-left: 30px;
+        }
+        .timeline::before {
+            content: '';
+            position: absolute;
+            left: 8px;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background: linear-gradient(180deg, #6366f1, #8b5cf6);
+        }
+        .timeline-item {
+            position: relative;
+            margin-bottom: 24px;
+        }
+        .timeline-item::before {
+            content: '';
+            position: absolute;
+            left: -26px;
+            top: 4px;
+            width: 12px;
+            height: 12px;
+            background: #6366f1;
+            border-radius: 50%;
+            border: 2px solid #0a0a0f;
+        }
+        .timeline-item h4 {
+            font-size: 16px;
+            font-weight: 600;
+            color: #fafafa;
+            margin-bottom: 6px;
+        }
+        .timeline-item p {
+            font-size: 14px;
+            color: #71717a;
+            margin: 0;
+        }
+        @media (max-width: 640px) {
+            .hero h1 { font-size: 28px; }
+            .stats { grid-template-columns: repeat(2, 1fr); }
+            .feature-grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="hero">
+            <div class="hero-content">
+                <h1>Jima's SamplerHub</h1>
+                <p class="subtitle">音乐制作人智能采样管理工作站</p>
+                <span class="tag">生活娱乐赛道</span>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2><span class="icon">💡</span>创意介绍</h2>
+            <h3>想解决什么问题</h3>
+            <p>音乐制作人、DJ 和声音设计师的电脑里通常存有几千甚至上万个音频采样文件（WAV、MP3、FLAC 等），但现有的文件管理方式（文件夹层级、文件名搜索）效率极低。找一个"适合当前曲风的 Kick 鼓"可能需要翻几十个子文件夹，严重打断创作灵感。</p>
+            
+            <h3>为什么会想到做这个</h3>
+            <p>作为一名电子音乐爱好者，我自己有超过 1TB 的采样库，分布在几十个文件夹中。每次做歌时，找合适的声音比实际创作还耗时。市面上的专业采样管理工具（如 Ableton 的浏览器、Native Instruments 的 Komplete Kontrol）要么价格昂贵，要么功能单一，且对中文用户不够友好。</p>
+            
+            <h3>产品形态</h3>
+            <p>Jima's SamplerHub 是一款基于 Electron 的<strong>桌面端智能采样管理工作站</strong>，支持 Windows 和 macOS。它像"音乐版的 Everything + 智能相册"，让采样文件的管理、搜索、预览和创作一气呵成。</p>
+            
+            <div class="highlight-box">
+                <p><strong>核心创新点：</strong>将 CLAP（Contrastive Language-Audio Pretraining）音频语义嵌入技术首次引入采样管理领域，用户可以用自然语言描述（如"温暖的 Lo-Fi 鼓点"）来搜索音频，而不必记住文件名。</p>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2><span class="icon">👥</span>目标用户及痛点</h2>
+            <h3>面向哪些用户</h3>
+            <p>电子音乐制作人、嘻哈 Beat Maker、影视配乐师、游戏音效设计师、DJ，以及任何需要管理大量音频素材的创作者。</p>
+            
+            <h3>使用场景</h3>
+            <p>在 DAW（数字音频工作站）中制作音乐时，需要快速找到合适的采样；整理从各处下载/购买的采样包；浏览在线免费采样库并一键下载；在即兴创作时用鼓垫快速触发采样。</p>
+            
+            <h3>当前痛点</h3>
+            <div class="feature-grid">
+                <div class="feature-card">
+                    <div class="emoji">🔍</div>
+                    <h4>找采样像大海捞针</h4>
+                    <p>文件夹层级深、命名不规范，靠记忆和文件名搜索效率低下</p>
+                </div>
+                <div class="feature-card">
+                    <div class="emoji">🏷️</div>
+                    <h4>分类全靠手动</h4>
+                    <p>下载新采样包后需要逐个听、手动分类，耗时耗力</p>
+                </div>
+                <div class="feature-card">
+                    <div class="emoji">🔁</div>
+                    <h4>重复文件堆积</h4>
+                    <p>不同来源的采样包常有重复，占用大量存储空间</p>
+                </div>
+                <div class="feature-card">
+                    <div class="emoji">🌐</div>
+                    <h4>在线资源分散</h4>
+                    <p>免费采样分布在多个网站，没有统一入口</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2><span class="icon">🚀</span>价值与意义</h2>
+            <h3>效率提升</h3>
+            <p>通过 AI 自动分类和语义搜索，将"找采样"的时间从平均 5-10 分钟缩短到 30 秒内。支持 10,000+ 采样文件的毫秒级检索，让创作者把精力集中在音乐本身。</p>
+            
+            <h3>社会价值</h3>
+            <p>降低音乐创作的门槛。新手制作人无需购买昂贵的采样管理工具，也无需学习复杂的文件组织规范，即可拥有专业级的采样库管理能力。支持 11 种语言，让全球创作者都能无障碍使用。</p>
+            
+            <h3>商业价值</h3>
+            <p>开源免费的基础版本 + 付费 Pro 版本（云端同步、高级 AI 分析、独家采样包）。可拓展为采样市场的流量入口，连接创作者与采样供应商。</p>
+
+            <div class="stats">
+                <div class="stat-item">
+                    <div class="number">40+</div>
+                    <div class="label">AI 智能分类</div>
+                </div>
+                <div class="stat-item">
+                    <div class="number">11</div>
+                    <div class="label">语言支持</div>
+                </div>
+                <div class="stat-item">
+                    <div class="number">3</div>
+                    <div class="label">在线采样源</div>
+                </div>
+                <div class="stat-item">
+                    <div class="number">0ms</div>
+                    <div class="label">波形预览延迟</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2><span class="icon">⚡</span>核心功能</h2>
+            <div class="feature-grid">
+                <div class="feature-card">
+                    <div class="emoji">🤖</div>
+                    <h4>AI 智能分类</h4>
+                    <p>基于音频内容和文件名自动分类到 Drums、Bass、Synths 等 40+ 类别，支持 UCS 国际标准</p>
+                </div>
+                <div class="feature-card">
+                    <div class="emoji">🧠</div>
+                    <h4>语义搜索</h4>
+                    <p>输入"温暖的钢琴"或"沉重的 808"，CLAP AI 理解你的描述，找到最匹配的采样</p>
+                </div>
+                <div class="feature-card">
+                    <div class="emoji">🎹</div>
+                    <h4>鼓垫演奏</h4>
+                    <p>16 格鼓垫 + 步进音序器，无需打开 DAW 即可快速试听和编排节奏</p>
+                </div>
+                <div class="feature-card">
+                    <div class="emoji">📶</div>
+                    <h4>波形可视化</h4>
+                    <p>实时波形预览，支持播放、循环、变速，直观判断采样是否合适</p>
+                </div>
+                <div class="feature-card">
+                    <div class="emoji">🌍</div>
+                    <h4>在线采样库</h4>
+                    <p>集成 Freesound、Pixabay、SND.dev，一键浏览和下载免费采样</p>
+                </div>
+                <div class="feature-card">
+                    <div class="emoji">🎵</div>
+                    <h4>BPM/Key 检测</h4>
+                    <p>自动分析音频的 BPM 和音乐调性，方便与现有工程匹配</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2><span class="icon">🛠️</span>技术栈</h2>
+            <p>本项目完全使用 TRAE 辅助开发，基于以下技术栈构建：</p>
+            <div class="tech-stack">
+                <span class="tech-tag">Electron 31</span>
+                <span class="tech-tag">React 18</span>
+                <span class="tech-tag">TypeScript</span>
+                <span class="tech-tag">TailwindCSS</span>
+                <span class="tech-tag">SQLite</span>
+                <span class="tech-tag">Drizzle ORM</span>
+                <span class="tech-tag">CLAP AI</span>
+                <span class="tech-tag">Web Audio API</span>
+                <span class="tech-tag">Tone.js</span>
+                <span class="tech-tag">Vite</span>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2><span class="icon">📅</span>开发历程</h2>
+            <div class="timeline">
+                <div class="timeline-item">
+                    <h4>项目启动</h4>
+                    <p>确定产品定位和技术架构，搭建 Electron + React + TypeScript 基础框架</p>
+                </div>
+                <div class="timeline-item">
+                    <h4>核心功能开发</h4>
+                    <p>实现采样扫描、AI 分类、波形预览、搜索等核心功能，集成 SQLite 数据库</p>
+                </div>
+                <div class="timeline-item">
+                    <h4>AI 能力增强</h4>
+                    <p>引入 CLAP 语义嵌入，实现自然语言搜索音频；添加 BPM/Key 自动检测</p>
+                </div>
+                <div class="timeline-item">
+                    <h4>创作工具集成</h4>
+                    <p>开发鼓垫演奏器、步进音序器、在线采样库浏览等创作辅助功能</p>
+                </div>
+                <div class="timeline-item">
+                    <h4>性能优化 & 上线准备</h4>
+                    <p>优化 10,000+ 采样加载性能，添加多语言支持、自动更新、CI/CD 流程</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="cta">
+            <h2>让创作回归创作本身</h2>
+            <p>Jima's SamplerHub —— 音乐人的智能采样管家</p>
+            <a href="https://github.com/jimmma/samplerhub" class="btn">查看项目源码</a>
+        </div>
+    </div>
+</body>
+</html>

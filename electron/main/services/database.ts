@@ -131,7 +131,6 @@ function setDbVersion(s: any, v: number): void {
 
 export async function initDatabase(): Promise<void> {
   if (isDatabaseInitialized) return;
-  isDatabaseInitialized = true;
 
   // 先确保数据库连接已创建
   getDatabase();
@@ -142,10 +141,11 @@ export async function initDatabase(): Promise<void> {
   // --- a. 快速路径：检查 schema 版本，已初始化则跳过重型操作 ---
   const currentVersion = getDbVersion(s);
   if (currentVersion >= DB_SCHEMA_VERSION) {
-    console.log(`[DB] Schema v${currentVersion} already up to date, skipping init`);
+    console.log(`[DB] Schema v${currentVersion} already up to date, skipping init (${Date.now() - startTime}ms)`);
+    isDatabaseInitialized = true;
     return;
   }
-  console.log(`[DB] Schema upgrade: v${currentVersion} -> v${DB_SCHEMA_VERSION}`);
+  console.log(`[DB] Schema upgrade: v${currentVersion} -> ${DB_SCHEMA_VERSION}`);
 
   // --- a2. 增量迁移：只执行版本间差异，不重跑全量初始化 ---
   if (currentVersion >= 1 && currentVersion < 2) {
@@ -157,6 +157,83 @@ export async function initDatabase(): Promise<void> {
     setDbVersion(s, 2);
     console.log(`[DB] v1->v2 migrations completed in ${Date.now() - stepStart}ms`);
     return;
+  }
+
+  // --- a3. 首次创建数据库时，批量更新 samples 的 category_id ---
+  // 此逻辑只在全新数据库（currentVersion === 0）时执行
+  if (currentVersion === 0) {
+    stepStart = Date.now();
+    console.log('[DB] First-time init: batch updating sample category_ids...');
+    try {
+      // 获取所有分类，构建名称到 id 的映射
+      const allCategories = s.prepare('SELECT id, name FROM categories').all();
+      const categoryMap = new Map(allCategories.map((c: any) => [c.name, c.id]));
+
+      // 获取所有需要更新 category_id 的 samples（category_id IS NULL 或 0 的情况）
+      const samplesToUpdate = s.prepare('SELECT id, file_name FROM samples WHERE category_id IS NULL OR category_id = 0').all();
+
+      if (samplesToUpdate && (samplesToUpdate as any[]).length > 0) {
+        // 简单的文件名分类匹配逻辑
+        const classifySample = (fileName: string): string | null => {
+          const lower = fileName.toLowerCase();
+          if (/808|sub bass|subbass/.test(lower)) return '808 Bass';
+          if (/kick|bd|bass drum/.test(lower)) return 'Kick';
+          if (/snare|sd/.test(lower)) return 'Snare';
+          if (/clap/.test(lower)) return 'Clap';
+          if (/hi.?hat|hihat|closed hat|hh/.test(lower)) return 'Hi-Hat';
+          if (/open hat|openhat/.test(lower)) return 'Open Hat';
+          if (/perc|conga|bongo|tabala|tamb/.test(lower)) return 'Percussion';
+          if (/rim/.test(lower)) return 'Rim';
+          if (/bass/.test(lower)) return 'Sub Bass';
+          if (/synth|chord|pluck|lead/.test(lower)) return 'Synth Lead';
+          if (/vocal|vox|voice|chant|choir/.test(lower)) return 'Vocal';
+          if (/fx|sfx|effect|impact|riser|faller|transition|whoosh|glitch|foley|sweep/.test(lower)) return 'FX';
+          if (/drum loop|drumloop|full drum|drum break/.test(lower)) return 'Drum Loop';
+          if (/top loop|no kick|no_kick/.test(lower)) return 'Top Loop';
+          if (/shaker/.test(lower)) return 'Shaker';
+          if (/pad|atmosphere|ambient|texture/.test(lower)) return 'Pad';
+          if (/loop|full mix|construction/.test(lower)) return 'Loop';
+          if (/one shot|oneshot|one_shot/.test(lower)) return 'One Shot';
+          if (/piano|keys|key|rhodes|epiano/.test(lower)) return 'Piano';
+          if (/guitar|gtr|acoustic/.test(lower)) return 'Guitar';
+          if (/electric guitar|el gtr|distorted/.test(lower)) return 'Electric Guitar';
+          if (/violin|fiddle|viola/.test(lower)) return 'Violin';
+          if (/strings|string|ensemble|orchestra/.test(lower)) return 'Strings';
+          if (/brass|trumpet|trombone|horn|tuba/.test(lower)) return 'Brass';
+          if (/flute|recorder/.test(lower)) return 'Flute';
+          if (/sax|saxophone/.test(lower)) return 'Saxophone';
+          if (/organ|hammond|b3/.test(lower)) return 'Organ';
+          return null;
+        };
+
+        // 批量更新：每批 500 条，减少事务开销
+        const BATCH_SIZE = 500;
+        const sampleList = samplesToUpdate as any[];
+        let updatedCount = 0;
+
+        for (let i = 0; i < sampleList.length; i += BATCH_SIZE) {
+          const batch = sampleList.slice(i, i + BATCH_SIZE);
+          const updateStmt = s.prepare('UPDATE samples SET category_id = ? WHERE id = ?');
+
+          s.transaction(() => {
+            for (const sample of batch) {
+              const matchedCategory = classifySample(sample.file_name || '');
+              const categoryId = matchedCategory ? categoryMap.get(matchedCategory) : null;
+              if (categoryId) {
+                updateStmt.run(categoryId, sample.id);
+                updatedCount++;
+              }
+            }
+          })();
+        }
+
+        console.log(`[DB] Updated ${updatedCount} sample category_ids in ${Date.now() - stepStart}ms`);
+      } else {
+        console.log('[DB] No samples need category_id update');
+      }
+    } catch (err) {
+      console.error('[DB] Category update error:', err);
+    }
   }
 
   // --- b. Tables + indexes + categories + rules creation ---
@@ -726,6 +803,7 @@ export async function initDatabase(): Promise<void> {
 
   // --- i. 标记 schema 已初始化完成 ---
   setDbVersion(s, DB_SCHEMA_VERSION);
+  isDatabaseInitialized = true;
   console.log(`[DB] Init completed in ${Date.now() - startTime}ms`);
 }
 
