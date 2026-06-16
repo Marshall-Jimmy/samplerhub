@@ -1,9 +1,9 @@
-name: Build
+name: Build and Release
 
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, master]
     paths-ignore:
       - "**.md"
       - "**.spec.js"
@@ -14,9 +14,11 @@ on:
       - ".gitignore"
       - ".github/**"
       - "!.github/workflows/build.yml"
+  release:
+    types: [created]
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -28,17 +30,21 @@ jobs:
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
         with:
           persist-credentials: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: 'npm'
 
       - name: Install Dependencies
         run: npm install
+
+      - name: Run Unit Tests
+        run: npm test
 
       - name: Build Release Files
         run: npm run build
@@ -46,8 +52,17 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload Artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: release_on_${{ matrix.os }}
           path: release/
           retention-days: 5
+
+      # Upload to GitHub Releases when a release is created
+      - name: Upload to GitHub Releases
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release/**
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
