@@ -115,25 +115,23 @@ const CategoryTree: React.FC<CategoryTreeProps> = ({ activeSection, onSectionCha
 
   const dbCategoryNodes: CategoryNode[] = React.useMemo(() => {
     const cats = categories || [];
-    // 从扁平列表构建树形结构
-    const catMap = new Map<number, Category>();
-    cats.forEach((cat: Category) => catMap.set(cat.id, cat));
-    
-    // 为每个分类填充 children
+    // 构建 parent -> children 映射（不修改原始对象）
+    const childrenMap = new Map<number, Category[]>();
     cats.forEach((cat: Category) => {
       if (cat.parentId !== null && cat.parentId !== undefined) {
-        const parent = catMap.get(cat.parentId);
-        if (parent) {
-          if (!parent.children) parent.children = [];
-          parent.children.push(cat);
-        }
+        const siblings = childrenMap.get(cat.parentId) || [];
+        siblings.push(cat);
+        childrenMap.set(cat.parentId, siblings);
       }
     });
     
     // 构建节点
     const buildNode = (cat: Category): CategoryNode => {
       const color = categoryColorMap[cat.name] || '#6B7280';
-      const childNodes = (cat.children || []).sort((a, b) => a.sortOrder - b.sortOrder).map(buildNode);
+      const childCats = childrenMap.get(cat.id) || [];
+      const childNodes = childCats
+        .sort((a, b) => a.sortOrder - b.sortOrder)
+        .map(buildNode);
       return {
         id: `cat-${cat.id}`,
         name: cat.name,
