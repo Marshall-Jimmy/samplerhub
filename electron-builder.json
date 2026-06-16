@@ -86,5 +86,10 @@
   "portable": {
     "artifactName": "${productName}_${version}_Portable.${ext}"
   },
-  "publish": null
+  "publish": {
+    "provider": "github",
+    "owner": "jimmma",
+    "repo": "samplerhub",
+    "releaseType": "release"
+  }
 }
