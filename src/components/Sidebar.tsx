@@ -1,9 +1,14 @@
-import React, { useState, useCallback, useEffect } from 'react';
-import { Tooltip } from 'antd';
+import React, { useState, useCallback, useEffect, lazy, Suspense } from 'react';
+import { Tooltip, Modal, Input, InputNumber, Select } from 'antd';
 import { useTranslation } from 'react-i18next';
+import { toast } from 'sonner';
 import { handleIpcError } from '../utils/ipcError';
 import CategoryTree from './CategoryTree';
 import CategoryIcon from './common/CategoryIcon';
+import { useProfileStore } from '../stores/profileStore';
+
+const GameCategoryTree = lazy(() => import('./GameCategoryTree'));
+const PostSceneEditor = lazy(() => import('./PostSceneEditor'));
 import {
   FolderAddOutlined,
   PlusOutlined,
@@ -12,6 +17,7 @@ import {
   EditOutlined,
   CloudOutlined,
   CustomerServiceOutlined,
+  SearchOutlined,
 } from '@ant-design/icons';
 import { ipcClient } from '../services/ipcClient';
 import { useLibraryStore } from '../stores/libraryStore';
@@ -29,13 +35,30 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed = false, onOpenOnline, onNa
   const { t } = useTranslation();
   const [activeSection, setActiveSection] = useState<string>('library');
   const onlineSampleEnabled = useSettingsStore(s => s.onlineSampleEnabled);
+  const appMode = useProfileStore(s => s.appMode);
   const { setActiveSection: setStoreSection, setScanning } = useLibraryStore();
   const { playlists, activePlaylistId, fetchPlaylists, createPlaylist, deletePlaylist, setActivePlaylist, updatePlaylist, exportPlaylist } = usePlaylistStore();
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editingName, setEditingName] = useState('');
 
+  // 智能文件夹状态
+  const [smartFolders, setSmartFolders] = useState<Array<{ id: number; name: string; icon: string; color: string }>>([]);
+  const [showSmartFolderModal, setShowSmartFolderModal] = useState(false);
+  const [smartFolderForm, setSmartFolderForm] = useState({
+    name: '',
+    query: '',
+    bpmMin: undefined as number | undefined,
+    bpmMax: undefined as number | undefined,
+    key: undefined as string | undefined,
+    isFavorite: false,
+  });
+
   useEffect(() => {
     fetchPlaylists();
+    // 加载智能文件夹
+    ipcClient.getSmartFolders().then(folders => {
+      setSmartFolders(folders || []);
+    }).catch(() => {});
   }, [fetchPlaylists]);
 
   const handleAddFolder = useCallback(async () => {
@@ -44,12 +67,15 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed = false, onOpenOnline, onNa
       const result = await ipcClient.startScan(null);
       if (!result) {
         setScanning(false);
+        return;
       }
+      // 导入成功，显示提示并刷新列表
+      toast.success(t('library.scanComplete', { added: result.added, updated: result.updated }));
     } catch (err) {
       handleIpcError(err, t('sidebar.addFolder'));
       setScanning(false);
     }
-  }, [setScanning]);
+  }, [setScanning, t]);
 
   const handleSectionChange = useCallback((key: string) => {
     setActiveSection(key);
@@ -111,15 +137,62 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed = false, onOpenOnline, onNa
     setEditingId(null);
   }, [editingName, updatePlaylist]);
 
+  // 智能文件夹：创建
+  const handleCreateSmartFolder = useCallback(async () => {
+    if (!smartFolderForm.name.trim()) return;
+    try {
+      const filters: Record<string, any> = {};
+      if (smartFolderForm.query) filters.query = smartFolderForm.query;
+      if (smartFolderForm.bpmMin !== undefined) filters.bpmMin = smartFolderForm.bpmMin;
+      if (smartFolderForm.bpmMax !== undefined) filters.bpmMax = smartFolderForm.bpmMax;
+      if (smartFolderForm.key) filters.key = smartFolderForm.key;
+      if (smartFolderForm.isFavorite) filters.isFavorite = true;
+
+      await ipcClient.createSmartFolder(
+        smartFolderForm.name.trim(),
+        smartFolderForm.query,
+        JSON.stringify(filters),
+        'search',
+        '#10B981'
+      );
+      const folders = await ipcClient.getSmartFolders();
+      setSmartFolders(folders || []);
+      setShowSmartFolderModal(false);
+      setSmartFolderForm({ name: '', query: '', bpmMin: undefined, bpmMax: undefined, key: undefined, isFavorite: false });
+    } catch (err) {
+      handleIpcError(err);
+    }
+  }, [smartFolderForm]);
+
+  // 智能文件夹：选择
+  const handleSelectSmartFolder = useCallback((id: number) => {
+    setActiveSection('smartFolder');
+    setStoreSection('smartFolder');
+    useLibraryStore.getState().setActiveSmartFolderId(id);
+    onNavigateLibrary?.();
+  }, [setStoreSection, onNavigateLibrary]);
+
+  // 智能文件夹：删除
+  const handleDeleteSmartFolder = useCallback(async (e: React.MouseEvent, id: number) => {
+    e.stopPropagation();
+    try {
+      await ipcClient.deleteSmartFolder(id);
+      const folders = await ipcClient.getSmartFolders();
+      setSmartFolders(folders || []);
+    } catch (err) {
+      handleIpcError(err);
+    }
+  }, []);
+
   const sections = [
     { key: 'favorites', icon: <CategoryIcon name="favorites" size={16} />, label: t('sidebar.favorites'), color: '#F59E0B' },
     { key: 'recent', icon: <CategoryIcon name="recent" size={16} />, label: t('sidebar.recent'), color: '#818CF8' },
-    { key: 'midi', icon: <CustomerServiceOutlined style={{ fontSize: 16 }} />, label: t('sidebar.midi', 'MIDI'), color: '#8B5CF6' },
+    { key: 'midi', icon: <CustomerServiceOutlined style={{ fontSize: 16 }} />, label: t('sidebar.midi'), color: '#8B5CF6' },
   ];
 
   // 在线采样入口（仅在设置中启用时显示）
   if (onlineSampleEnabled) {
-    sections.push({ key: 'online', icon: <CloudOutlined style={{ fontSize: 16 }} />, label: t('sidebar.onlineSample', '在线采样'), color: '#06B6D4' });
+    sections.push({ key: 'online', icon: <CloudOutlined style={{ fontSize: 16 }} />, label: t('sidebar.onlineSample'), color: '#06B6D4' });
   }
 
   // Collapsed mode: icon-only sidebar
@@ -196,12 +269,68 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed = false, onOpenOnline, onNa
         </div>
       </div>
 
-      {/* Category Tree */}
+      {/* Category Tree / Mode-specific Tree */}
       <div className={s.treeArea}>
-        <CategoryTree
-          activeSection={activeSection}
-          onSectionChange={handleSectionChange}
-        />
+        {appMode === 'music' && (
+          <CategoryTree
+            activeSection={activeSection}
+            onSectionChange={handleSectionChange}
+          />
+        )}
+        {appMode === 'game' && (
+          <Suspense fallback={null}>
+            <GameCategoryTree />
+          </Suspense>
+        )}
+        {appMode === 'post' && (
+          <Suspense fallback={null}>
+            <PostSceneEditor />
+          </Suspense>
+        )}
+      </div>
+
+      {/* Smart Folders Section */}
+      <div className={s.playlistsSection}>
+        <div className={s.playlistsHeader}>
+          <span className={s.sectionLabel}>{t('sidebar.smartFolders')}</span>
+          <button
+            onClick={() => setShowSmartFolderModal(true)}
+            className={`${s.iconBtn} ${s.iconBtnSmall}`}
+            title={t('sidebar.newSmartFolder')}
+          >
+            <PlusOutlined />
+          </button>
+        </div>
+
+        <div className={s.playlistList}>
+          {smartFolders.map(folder => {
+            const isActive = activeSection === 'smartFolder' && useLibraryStore.getState().activeSmartFolderId === folder.id;
+            return (
+              <div
+                key={folder.id}
+                onClick={() => handleSelectSmartFolder(folder.id)}
+                className={`${s.playlistItem} ${isActive ? s.playlistItemActive : ''}`}
+              >
+                <SearchOutlined style={{ fontSize: 12, color: folder.color || '#10B981' }} />
+                <span className={s.playlistName}>{folder.name}</span>
+                <div className={s.playlistActions}>
+                  <button
+                    onClick={(e) => handleDeleteSmartFolder(e, folder.id)}
+                    className={s.actionBtn}
+                    title={t('sidebar.deleteSmartFolder')}
+                  >
+                    <DeleteOutlined />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+          {smartFolders.length === 0 && (
+            <div className={s.emptyHint} onClick={() => setShowSmartFolderModal(true)}>
+              {t('sidebar.noSmartFolders')}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Playlists Section */}
@@ -309,6 +438,70 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed = false, onOpenOnline, onNa
         <span className={s.footerBrand}>SamplerHub</span>
         <span className={s.footerVersion}>v1.0</span>
       </div>
+
+      {/* 创建智能文件夹对话框 */}
+      <Modal
+        title={t('sidebar.newSmartFolder')}
+        open={showSmartFolderModal}
+        onOk={handleCreateSmartFolder}
+        onCancel={() => { setShowSmartFolderModal(false); setSmartFolderForm({ name: '', query: '', bpmMin: undefined, bpmMax: undefined, key: undefined, isFavorite: false }); }}
+        okText={t('sidebar.createSmartFolder')}
+        cancelText={t('common.cancel')}
+        width={480}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div>
+            <label style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4, display: 'block' }}>{t('sidebar.smartFolderName')}</label>
+            <Input
+              value={smartFolderForm.name}
+              onChange={e => setSmartFolderForm(f => ({ ...f, name: e.target.value }))}
+              placeholder={t('sidebar.smartFolderNamePlaceholder')}
+            />
+          </div>
+          <div>
+            <label style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4, display: 'block' }}>{t('sidebar.smartFolderQuery')}</label>
+            <Input
+              value={smartFolderForm.query}
+              onChange={e => setSmartFolderForm(f => ({ ...f, query: e.target.value }))}
+              placeholder={t('sidebar.smartFolderQueryPlaceholder')}
+            />
+          </div>
+          <div style={{ display: 'flex', gap: 12 }}>
+            <div style={{ flex: 1 }}>
+              <label style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4, display: 'block' }}>BPM Min</label>
+              <InputNumber
+                value={smartFolderForm.bpmMin}
+                onChange={v => setSmartFolderForm(f => ({ ...f, bpmMin: v ?? undefined }))}
+                min={0} max={300} style={{ width: '100%' }}
+              />
+            </div>
+            <div style={{ flex: 1 }}>
+              <label style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4, display: 'block' }}>BPM Max</label>
+              <InputNumber
+                value={smartFolderForm.bpmMax}
+                onChange={v => setSmartFolderForm(f => ({ ...f, bpmMax: v ?? undefined }))}
+                min={0} max={300} style={{ width: '100%' }}
+              />
+            </div>
+          </div>
+          <div>
+            <label style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4, display: 'block' }}>{t('sidebar.smartFolderKey')}</label>
+            <Select
+              value={smartFolderForm.key}
+              onChange={v => setSmartFolderForm(f => ({ ...f, key: v || undefined }))}
+              allowClear
+              placeholder={t('sidebar.smartFolderKeyPlaceholder')}
+              style={{ width: '100%' }}
+              options={[
+                { value: 'C', label: 'C' }, { value: 'C#', label: 'C#' }, { value: 'D', label: 'D' },
+                { value: 'D#', label: 'D#' }, { value: 'E', label: 'E' }, { value: 'F', label: 'F' },
+                { value: 'F#', label: 'F#' }, { value: 'G', label: 'G' }, { value: 'G#', label: 'G#' },
+                { value: 'A', label: 'A' }, { value: 'A#', label: 'A#' }, { value: 'B', label: 'B' },
+              ]}
+            />
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 };

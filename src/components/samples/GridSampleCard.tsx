@@ -72,9 +72,41 @@ const GridSampleCard: React.FC<GridSampleCardProps> = ({
   const handleDragStart = useCallback((e: React.DragEvent) => {
     e.dataTransfer.setData('text/x-file-path', sample.filePath);
     e.dataTransfer.effectAllowed = 'copy';
+    // Custom drag image: audio file icon
+    const canvas = document.createElement('canvas');
+    canvas.width = 140;
+    canvas.height = 40;
+    // Must append to DOM for setDragImage to work reliably in Electron
+    canvas.style.position = 'fixed';
+    canvas.style.top = '-9999px';
+    canvas.style.left = '-9999px';
+    document.body.appendChild(canvas);
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.fillStyle = '#1E1E2E';
+      ctx.beginPath();
+      ctx.roundRect(0, 0, 140, 40, 8);
+      ctx.fill();
+      ctx.fillStyle = accentColor;
+      ctx.beginPath();
+      ctx.roundRect(0, 0, 4, 40, [8, 0, 0, 8]);
+      ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 14px system-ui, sans-serif';
+      ctx.fillText('🎵', 14, 26);
+      ctx.fillStyle = 'rgba(255,255,255,0.9)';
+      ctx.font = '12px system-ui, sans-serif';
+      const name = sample.fileName.replace(/\.[^/.]+$/, '');
+      ctx.fillText(name.length > 12 ? name.slice(0, 12) + '…' : name, 38, 26);
+      e.dataTransfer.setDragImage(canvas, 70, 20);
+    }
+    // Clean up after drag starts
+    requestAnimationFrame(() => {
+      if (canvas.parentNode) document.body.removeChild(canvas);
+    });
     window.electronAPI.send('drag:start', { filePath: sample.filePath, name: sample.fileName });
     setIsDragging(true);
-  }, [sample.filePath, sample.fileName]);
+  }, [sample.filePath, sample.fileName, accentColor]);
 
   const handleDragEnd = useCallback(() => setIsDragging(false), []);
 
@@ -85,8 +117,6 @@ const GridSampleCard: React.FC<GridSampleCardProps> = ({
       onPlay(sample.id);
     }
   }, [isMultiSelectMode, sample.id, index, onSelect, onPlay]);
-
-  const stateClass = isSelected ? s.cardSelected : isPlaying ? s.cardPlaying : isDragging ? s.cardDragging : s.card;
 
   return (
     <div
@@ -112,7 +142,7 @@ const GridSampleCard: React.FC<GridSampleCardProps> = ({
       {/* Info */}
       <div className={s.info}>
         <span className={`${s.name} ${isPlaying ? s.namePlaying : ''}`}>
-          {sample.fileName.replace(/\.[^.]+$/, '')}
+          {sample.fileName.replace(/\.[^/.]+$/, '')}
         </span>
         <div className={s.meta}>
           {sample.fileType === 'midi' && <span className={s.midiBadge}>MIDI</span>}

@@ -1,4 +1,4 @@
-import { getDatabase } from './database';
+import { getDatabase, getSqlite } from './database';
 import { samples, classificationRules } from '../../../drizzle/schema';
 import { eq, isNull } from 'drizzle-orm';
 import type { ClassificationRule } from '../../../shared/types/sample.types';
@@ -59,15 +59,64 @@ function keywordMatches(text: string, keyword: string): boolean {
   return lowerText.includes(lowerKw);
 }
 
+// ============ 预编译分类规则缓存 ============
+
+interface CompiledRule {
+  rule: ClassificationRule;
+  compiledRegex?: RegExp;
+  keywords?: string[];
+  folderPatterns?: string[];
+}
+
+let compiledRulesCache: CompiledRule[] | null = null;
+let cachedRulesRaw: ClassificationRule[] | null = null;
+
 /**
- * 对单个采样文件进行分类，返回目标分类 ID
- * 解耦设计：纯函数，不依赖数据库写入
+ * 预编译分类规则：正则只编译一次，规则只排序过滤一次
+ * 当传入的 rules 引用变化时重新编译
+ */
+function getCompiledRules(rules: ClassificationRule[]): CompiledRule[] {
+  // 引用相同则复用缓存
+  if (rules === cachedRulesRaw && compiledRulesCache) {
+    return compiledRulesCache;
+  }
+
+  cachedRulesRaw = rules;
+  compiledRulesCache = [...rules]
+    .filter(r => r.isActive)
+    .sort((a, b) => b.priority - a.priority)
+    .map(rule => {
+      const compiled: CompiledRule = { rule };
+      switch (rule.ruleType) {
+        case 'regex':
+          try {
+            compiled.compiledRegex = new RegExp(rule.pattern, 'i');
+          } catch {
+            // invalid regex, compiledRegex 保持 undefined → 跳过
+          }
+          break;
+        case 'keyword':
+          compiled.keywords = rule.pattern.split('|').map(k => k.trim());
+          break;
+        case 'folder':
+          compiled.folderPatterns = rule.pattern.split('|').map(f => f.trim().toLowerCase());
+          break;
+      }
+      return compiled;
+    });
+
+  return compiledRulesCache;
+}
+
+/**
+ * 对单个采样文件进行分类，返回所有匹配的分类 ID（第一个为主分类）
+ * 返回格式：{ primary: number, secondary: number[] }
  */
 export function classifySample(
   fileName: string,
   filePath: string,
   rules: ClassificationRule[]
-): number | null {
+): { primary: number; secondary: number[] } {
   const lowerName = fileName.toLowerCase();
   const lowerPath = filePath.toLowerCase();
 
@@ -77,32 +126,27 @@ export function classifySample(
     ? `${lowerName} ${bracketTypes.join(' ')}`
     : lowerName;
 
-  // 按 priority 降序排列
-  const sortedRules = [...rules]
-    .filter(r => r.isActive)
-    .sort((a, b) => b.priority - a.priority);
+  // 使用预编译规则
+  const compiledRules = getCompiledRules(rules);
 
-  for (const rule of sortedRules) {
-    let matched = false;
+  const matched: number[] = [];
+
+  for (const { rule, compiledRegex, keywords, folderPatterns } of compiledRules) {
+    let ruleMatched = false;
 
     switch (rule.ruleType) {
       case 'keyword': {
-        const keywords = rule.pattern.split('|').map(k => k.trim());
-        matched = keywords.some(kw => keywordMatches(extendedName, kw));
+        ruleMatched = keywords!.some(kw => keywordMatches(extendedName, kw));
         break;
       }
       case 'regex': {
-        try {
-          const regex = new RegExp(rule.pattern, 'i');
-          matched = regex.test(extendedName);
-        } catch {
-          // invalid regex, skip
+        if (compiledRegex) {
+          ruleMatched = compiledRegex.test(extendedName);
         }
         break;
       }
       case 'folder': {
-        const folderPatterns = rule.pattern.split('|').map(f => f.trim().toLowerCase());
-        matched = folderPatterns.some(fp =>
+        ruleMatched = folderPatterns!.some(fp =>
           lowerPath.includes(`/${fp}/`) ||
           lowerPath.includes(`\\${fp}\\`) ||
           lowerPath.includes(`/${fp} `) ||
@@ -112,57 +156,92 @@ export function classifySample(
       }
     }
 
-    if (matched) {
-      return rule.targetCategoryId;
+    if (ruleMatched) {
+      // 避免重复添加同一分类
+      if (!matched.includes(rule.targetCategoryId)) {
+        matched.push(rule.targetCategoryId);
+      }
     }
   }
 
-  // 未匹配任何规则，返回 "Uncategorized" (id=19)
-  return 19;
+  if (matched.length === 0) {
+    return { primary: 106, secondary: [] };
+  }
+
+  return { primary: matched[0], secondary: matched.slice(1) };
 }
 
 /**
- * 对所有未分类的采样进行批量分类
+ * 简化版：只返回主分类 ID（兼容旧调用方）
+ */
+export function classifySamplePrimary(
+  fileName: string,
+  filePath: string,
+  rules: ClassificationRule[]
+): number {
+  return classifySample(fileName, filePath, rules).primary;
+}
+
+/**
+ * 对所有未分类的采样进行批量分类（支持多标签）
  */
 export async function classifyAllSamples(): Promise<number> {
   const db = getDatabase();
+  const sqlite = getSqlite();
 
   const rules = await db.select().from(classificationRules) as ClassificationRule[];
   const uncategorized = await db.select().from(samples)
     .where(isNull(samples.categoryId))
     .limit(500);
 
+  const insertTagStmt = sqlite.prepare(
+    'INSERT OR IGNORE INTO sample_categories (sample_id, category_id, is_primary) VALUES (?, ?, ?)'
+  );
+
   let classified = 0;
+  sqlite.exec('BEGIN TRANSACTION');
   for (const sample of uncategorized) {
-    const categoryId = classifySample(sample.fileName, sample.filePath, rules);
-    if (categoryId !== null) {
-      await db.update(samples)
-        .set({ categoryId })
-        .where(eq(samples.id, sample.id));
-      classified++;
+    const result = classifySample(sample.fileName, sample.filePath, rules);
+    await db.update(samples)
+      .set({ categoryId: result.primary })
+      .where(eq(samples.id, sample.id));
+    insertTagStmt.run(sample.id, result.primary, 1);
+    for (const catId of result.secondary) {
+      insertTagStmt.run(sample.id, catId, 0);
     }
+    classified++;
   }
+  sqlite.exec('COMMIT');
 
   return classified;
 }
 
 /**
- * 对指定采样进行分类
+ * 对指定采样进行分类（支持多标签）
  */
 export async function classifySampleById(sampleId: number): Promise<number | null> {
   const db = getDatabase();
+  const sqlite = getSqlite();
 
   const sample = await db.select().from(samples).where(eq(samples.id, sampleId)).get();
   if (!sample) return null;
 
   const rules = await db.select().from(classificationRules) as ClassificationRule[];
-  const categoryId = classifySample(sample.fileName, sample.filePath, rules);
+  const result = classifySample(sample.fileName, sample.filePath, rules);
 
-  if (categoryId !== null) {
-    await db.update(samples)
-      .set({ categoryId })
-      .where(eq(samples.id, sample.id));
+  await db.update(samples)
+    .set({ categoryId: result.primary })
+    .where(eq(samples.id, sample.id));
+
+  // 更新多标签
+  sqlite.prepare('DELETE FROM sample_categories WHERE sample_id = ?').run(sampleId);
+  const insertTagStmt = sqlite.prepare(
+    'INSERT OR IGNORE INTO sample_categories (sample_id, category_id, is_primary) VALUES (?, ?, ?)'
+  );
+  insertTagStmt.run(sampleId, result.primary, 1);
+  for (const catId of result.secondary) {
+    insertTagStmt.run(sampleId, catId, 0);
   }
 
-  return categoryId;
+  return result.primary;
 }

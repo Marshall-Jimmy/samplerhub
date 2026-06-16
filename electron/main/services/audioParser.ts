@@ -1,6 +1,7 @@
 import { getDatabase } from './database';
 import { samples } from '../../../drizzle/schema';
 import { eq, isNull, and } from 'drizzle-orm';
+import { getFileIOService } from './fileIOService';
 
 export interface AudioMetadata {
   duration: number;
@@ -11,20 +12,38 @@ export interface AudioMetadata {
   key: string | null;
 }
 
-async function parseFileMetadata(filePath: string) {
-  // music-metadata v8 ESM: parseFile is on the main export
+async function parseFileMetadata(input: string | Buffer): Promise<any> {
   const mm = await import('music-metadata');
-  if ('parseFile' in mm) return (mm as any).parseFile(filePath);
-  // fallback: use parseStream with createReadStream
-  const { parseStream } = mm;
-  const fs = await import('fs');
-  const stream = fs.createReadStream(filePath);
-  return parseStream(stream, filePath);
+
+  if (typeof input === 'string') {
+    if ('parseFile' in mm) return (mm as any).parseFile(input);
+    // fallback: use parseStream with createReadStream
+    const { parseStream } = mm;
+    const fs = await import('fs');
+    const stream = fs.createReadStream(input);
+    return parseStream(stream, input);
+  }
+
+  // Buffer input: use parseBuffer
+  if ('parseBuffer' in mm) {
+    return (mm as any).parseBuffer(input);
+  }
+  // fallback: parseNodeStream from buffer
+  const { Readable } = await import('stream');
+  const stream = Readable.from(input);
+  return (mm as any).parseStream(stream as any, 'buffer');
 }
 
-export async function parseAudioFile(filePath: string): Promise<AudioMetadata> {
+export async function parseAudioFile(input: string | Buffer): Promise<AudioMetadata> {
+  let filePath: string;
+  if (typeof input === 'string') {
+    filePath = input;
+  } else {
+    filePath = '(buffer)';
+  }
+
   try {
-    const metadata = await parseFileMetadata(filePath);
+    const metadata = await parseFileMetadata(input);
     const format = metadata.format;
     const native = metadata.native;
 

@@ -1,6 +1,6 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Input, Button, Switch, Select, Tag, Empty, Spin } from 'antd';
+import { Input, Button, Switch, Select, Tag, Empty } from 'antd';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { handleIpcError } from '../../utils/ipcError';
@@ -44,7 +44,29 @@ const ClassificationRuleEditor: React.FC = () => {
     queryFn: () => ipcClient.getCategories(),
   });
 
-  const categoryMap = new Map((categories || []).map((c: Category) => [c.id, c.name]));
+  const categoryMap = useMemo(() =>
+    new Map((categories || []).map((c: Category) => [c.id, c.name])),
+    [categories]
+  );
+
+  const categoryOptions = useMemo(() =>
+    (categories || []).map((c: Category) => ({ value: c.id, label: c.name })),
+    [categories]
+  );
+
+  const ruleTypeOptions = useMemo(() => [
+    { value: 'keyword', label: t('rules.keyword') },
+    { value: 'regex', label: t('rules.regex') },
+    { value: 'folder', label: t('rules.folder') },
+  ], [t]);
+
+  const processedRules = useMemo(() => {
+    return (rules || []).map(rule => ({
+      ...rule,
+      typeColor: RuleTypeColors[rule.ruleType] || '#6B7280',
+      typeLabel: t(`rules.${rule.ruleType}`),
+    }));
+  }, [rules, t]);
 
   const handleCreate = useCallback(async () => {
     try {
@@ -190,7 +212,29 @@ const ClassificationRuleEditor: React.FC = () => {
   }, [queryClient, t]);
 
   if (isLoading) {
-    return <div style={{ display: 'flex', justifyContent: 'center', padding: 40 }}><Spin /></div>;
+    return (
+      <div style={{ padding: 20, maxWidth: 800 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+          <div style={{ width: 140, height: 24, background: 'var(--bg-active)', borderRadius: 4 }} />
+          <div style={{ display: 'flex', gap: 8 }}>
+            <div style={{ width: 80, height: 24, background: 'var(--bg-active)', borderRadius: 4 }} />
+            <div style={{ width: 80, height: 24, background: 'var(--bg-active)', borderRadius: 4 }} />
+            <div style={{ width: 80, height: 24, background: 'var(--bg-active)', borderRadius: 4 }} />
+            <div style={{ width: 80, height: 24, background: 'var(--bg-active)', borderRadius: 4 }} />
+          </div>
+        </div>
+        <div style={{ height: 44, background: 'var(--bg-active)', borderRadius: 8, marginBottom: 16 }} />
+        {Array.from({ length: 8 }).map((_, i) => (
+          <div key={i} style={{
+            height: 44,
+            background: 'var(--bg-active)',
+            borderRadius: 8,
+            marginBottom: 8,
+            animation: `pulse 1.5s ease-in-out ${i * 0.1}s infinite`,
+          }} />
+        ))}
+      </div>
+    );
   }
 
   return (
@@ -256,11 +300,9 @@ const ClassificationRuleEditor: React.FC = () => {
 
       {/* Rules list */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {(rules || []).length === 0 && <Empty description={t('rules.noRules')} />}
-        {(rules || []).map(rule => {
+        {processedRules.length === 0 && <Empty description={t('rules.noRules')} />}
+        {processedRules.map(rule => {
           const isEditing = editingId === rule.id;
-          const typeColor = RuleTypeColors[rule.ruleType] || '#6B7280';
-          const typeLabel = t(`rules.${rule.ruleType}`);
 
           return (
             <div key={rule.id} style={{
@@ -275,18 +317,14 @@ const ClassificationRuleEditor: React.FC = () => {
                   <div style={{ display: 'flex', gap: 8 }}>
                     <Input size="small" value={editName} onChange={e => setEditName(e.target.value)} placeholder={t('rules.ruleName')} style={{ flex: 1 }} />
                     <Select size="small" value={editRuleType} onChange={setEditRuleType} style={{ width: 100 }}
-                      options={[
-                        { value: 'keyword', label: t('rules.keyword') },
-                        { value: 'regex', label: t('rules.regex') },
-                        { value: 'folder', label: t('rules.folder') },
-                      ]}
+                      options={ruleTypeOptions}
                     />
                     <Input size="small" type="number" value={editPriority} onChange={e => setEditPriority(Number(e.target.value))} style={{ width: 70 }} placeholder={t('rules.priority')} />
                   </div>
                   <Input size="small" value={editPattern} onChange={e => setEditPattern(e.target.value)} placeholder={t('rules.matchPattern')} />
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                     <Select size="small" value={editTargetCategoryId} onChange={setEditTargetCategoryId} style={{ flex: 1 }}
-                      options={(categories || []).map((c: Category) => ({ value: c.id, label: c.name }))}
+                      options={categoryOptions}
                       placeholder={t('rules.targetCategory')}
                     />
                     <Button size="small" type="primary" onClick={handleSaveEdit}>{t('rules.save')}</Button>
@@ -296,7 +334,7 @@ const ClassificationRuleEditor: React.FC = () => {
               ) : (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <Switch size="small" checked={rule.isActive} onChange={() => handleToggleActive(rule.id, rule.isActive)} />
-                  <Tag color={typeColor} style={{ margin: 0, fontSize: 10 }}>{typeLabel}</Tag>
+                  <Tag color={rule.typeColor} style={{ margin: 0, fontSize: 10 }}>{rule.typeLabel}</Tag>
                   <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)', flex: 1 }}>
                     {rule.name}
                   </span>

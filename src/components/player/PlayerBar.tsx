@@ -362,6 +362,8 @@ const PlayerBar: React.FC = () => {
             onClick={isABLooping ? clearABLoop : setLoopA}
             className={`${s.controlBtn} ${s.abBtn} ${loopStart !== null ? s.abBtnActive : ''}`}
             title={isABLooping ? t('player.clearABLoop') : t('player.setLoopA')}
+            aria-label={isABLooping ? t('player.clearABLoop') : t('player.setLoopA')}
+            aria-pressed={loopStart !== null}
           >
             A
           </button>
@@ -369,6 +371,8 @@ const PlayerBar: React.FC = () => {
             onClick={setLoopB}
             className={`${s.controlBtn} ${s.abBtn} ${loopEnd !== null ? s.abBtnActive : ''}`}
             title={t('player.setLoopB')}
+            aria-label={t('player.setLoopB')}
+            aria-pressed={loopEnd !== null}
           >
             B
           </button>
@@ -382,6 +386,7 @@ const PlayerBar: React.FC = () => {
               }}
               className={`${s.controlBtn} ${s.abBtn}`}
               title={t('player.exportSelection')}
+              aria-label={t('player.exportSelection')}
             >
               <ExportOutlined style={{ fontSize: 11 }} />
             </button>
@@ -394,6 +399,7 @@ const PlayerBar: React.FC = () => {
           onChange={(e) => setPlaybackRate(Number(e.target.value) as any)}
           className={`${s.rateSelect} ${playbackRate !== 1 ? s.rateSelectActive : ''}`}
           title={t('player.speed')}
+          aria-label={t('player.speed')}
         >
           {PLAYBACK_RATES.map(r => (
             <option key={r} value={r}>{r}x</option>

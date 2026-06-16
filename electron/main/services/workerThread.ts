@@ -19,7 +19,7 @@ parentPort?.on('message', async (msg: { id: number; type: string; payload: any }
       }
       case 'generateWaveform': {
         const { filePath } = msg.payload;
-        const waveformResult = generateWaveform(filePath);
+        const waveformResult = await generateWaveform(filePath);
         result = waveformResult ? {
           waveform: waveformResult.waveform,
           hasPeaks: waveformResult.peaks.length > 0,

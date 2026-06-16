@@ -5,7 +5,9 @@ import {
   HeartOutlined,
   HeartFilled,
   TagOutlined,
+  CustomerServiceOutlined,
 } from '@ant-design/icons';
+import { useTranslation } from 'react-i18next';
 import CategoryIcon from '../common/CategoryIcon';
 import TagManager from '../tags/TagManager';
 import { highlightText } from '../../utils/highlight';
@@ -67,14 +69,42 @@ const SampleCard: React.FC<SampleCardProps> = ({
   onContextMenu,
   searchQuery,
 }) => {
+  const { t } = useTranslation();
   // 从 store 直接读取播放状态，避免父组件因播放状态变化而重渲染
   const isCurrentlyPlaying = usePlayerStore(s => s.currentSampleId === id && s.isPlaying);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [waveformVersion, setWaveformVersion] = useState(0);
+  const [isVisible, setIsVisible] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const [showTagManager, setShowTagManager] = useState(false);
+  const tagCloseTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // IntersectionObserver 懒加载：可见时才绘制波形
+  useEffect(() => {
+    const el = canvasRef.current?.closest('[data-sample-card]');
+    if (!el) {
+      setIsVisible(true); // 如果没有包裹元素，默认可见
+      return;
+    }
+    const observer = new IntersectionObserver(
+      ([entry]) => setIsVisible(entry.isIntersecting),
+      { rootMargin: '50px' }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   const catColor = getCategoryColor(category);
+
+  // 清理标签面板延迟关闭定时器
+  useEffect(() => {
+    return () => {
+      if (tagCloseTimeoutRef.current) {
+        clearTimeout(tagCloseTimeoutRef.current);
+        tagCloseTimeoutRef.current = null;
+      }
+    };
+  }, []);
 
   // 注册波形升级回调，升级完成后触发重绘
   useEffect(() => {
@@ -83,8 +113,10 @@ const SampleCard: React.FC<SampleCardProps> = ({
     });
   }, [id]);
 
-  // Draw mini waveform
+  // Draw mini waveform (MIDI files skip waveform drawing)
   useEffect(() => {
+    if (!isVisible) return;
+    if (fileType === 'midi') return;
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
@@ -119,7 +151,7 @@ const SampleCard: React.FC<SampleCardProps> = ({
       ctx.roundRect(x, y, barWidth, barH, 1);
       ctx.fill();
     }
-  }, [id, waveformData, filePath, catColor, isCurrentlyPlaying, waveformVersion]);
+  }, [id, waveformData, filePath, catColor, isCurrentlyPlaying, waveformVersion, isVisible]);
 
   const handleClick = useCallback((e: React.MouseEvent) => {
     // Ctrl/Cmd+Click: 多选切换
@@ -158,6 +190,11 @@ const SampleCard: React.FC<SampleCardProps> = ({
         const thumbCanvas = document.createElement('canvas');
         thumbCanvas.width = 180;
         thumbCanvas.height = 52;
+        // Must append to DOM for setDragImage to work reliably in Electron
+        thumbCanvas.style.position = 'fixed';
+        thumbCanvas.style.top = '-9999px';
+        thumbCanvas.style.left = '-9999px';
+        document.body.appendChild(thumbCanvas);
         const ctx = thumbCanvas.getContext('2d');
         if (ctx) {
           // Dark background with rounded corners
@@ -179,6 +216,10 @@ const SampleCard: React.FC<SampleCardProps> = ({
           ctx.fillText(displayName.length > 24 ? displayName.slice(0, 24) + '...' : displayName, 6, 47);
           e.dataTransfer.setDragImage(thumbCanvas, 90, 26);
         }
+        // Clean up after drag starts
+        requestAnimationFrame(() => {
+          if (thumbCanvas.parentNode) document.body.removeChild(thumbCanvas);
+        });
       } catch {
         // Fallback to default drag image
       }
@@ -193,7 +234,12 @@ const SampleCard: React.FC<SampleCardProps> = ({
       draggable={!!filePath}
       onDragStart={handleDragStart}
       onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => { setIsHovered(false); setShowTagManager(false); }}
+      onMouseLeave={() => {
+        setIsHovered(false);
+        if (showTagManager) {
+          tagCloseTimeoutRef.current = setTimeout(() => setShowTagManager(false), 300);
+        }
+      }}
       onClick={handleClick}
       onContextMenu={onContextMenu ? (e) => onContextMenu(e, id) : undefined}
       className={`${s.card} ${isCurrentlyPlaying ? s.cardPlaying : ''} ${isFocused ? s.cardFocused : ''} ${isSelected ? s.cardSelected : ''} ${filePath ? s.cardDraggable : ''}`}
@@ -204,15 +250,25 @@ const SampleCard: React.FC<SampleCardProps> = ({
         onClick={handlePlay}
         className={`${s.playBtn} ${isCurrentlyPlaying ? s.playBtnPlaying : ''}`}
         style={{ '--card-accent': catColor } as React.CSSProperties}
+        aria-label={isCurrentlyPlaying ? t('a11y.pauseSample', { name: displayName }) : t('a11y.playSample', { name: displayName })}
+        aria-pressed={isCurrentlyPlaying}
+        role="button"
+        tabIndex={0}
       >
         {isCurrentlyPlaying ? <PauseOutlined /> : <CaretRightOutlined style={{ marginLeft: 1 }} />}
       </button>
 
-      {/* Mini waveform */}
-      <canvas
-        ref={canvasRef}
-        className={`${s.miniWaveform} ${isCurrentlyPlaying ? s.miniWaveformPlaying : ''}`}
-      />
+      {/* Mini waveform / MIDI icon */}
+      {fileType === 'midi' ? (
+        <div className={s.miniWaveform} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <CustomerServiceOutlined style={{ fontSize: 14, opacity: 0.5 }} />
+        </div>
+      ) : (
+        <canvas
+          ref={canvasRef}
+          className={`${s.miniWaveform} ${isCurrentlyPlaying ? s.miniWaveformPlaying : ''}`}
+        />
+      )}
 
       {/* Name */}
       <span className={`${s.name} ${isCurrentlyPlaying ? s.namePlaying : ''} ${isCorrupted ? s.nameCorrupted : ''}`}>
@@ -252,6 +308,10 @@ const SampleCard: React.FC<SampleCardProps> = ({
         <button
           onClick={e => { e.stopPropagation(); onFavorite?.(id); }}
           className={`${s.actionBtn} ${isFavorite ? s.actionBtnFavorite : ''}`}
+          aria-label={isFavorite ? t('a11y.unfavoriteSample', { name: displayName }) : t('a11y.favoriteSample', { name: displayName })}
+          aria-pressed={isFavorite}
+          role="button"
+          tabIndex={0}
         >
           {isFavorite ? <HeartFilled /> : <HeartOutlined />}
         </button>
@@ -259,6 +319,10 @@ const SampleCard: React.FC<SampleCardProps> = ({
         <button
           onClick={e => { e.stopPropagation(); setShowTagManager(!showTagManager); }}
           className={`${s.actionBtn} ${showTagManager ? s.actionBtnTagActive : ''}`}
+          aria-label={showTagManager ? t('a11y.closeTagManager') : t('a11y.openTagManager')}
+          aria-expanded={showTagManager}
+          role="button"
+          tabIndex={0}
         >
           <TagOutlined />
         </button>
@@ -266,7 +330,19 @@ const SampleCard: React.FC<SampleCardProps> = ({
 
       {/* Tag Manager popup */}
       {showTagManager && (
-        <div className={s.tagPopup} onClick={e => e.stopPropagation()}>
+        <div
+          className={s.tagPopup}
+          onClick={e => e.stopPropagation()}
+          onMouseEnter={() => {
+            if (tagCloseTimeoutRef.current) {
+              clearTimeout(tagCloseTimeoutRef.current);
+              tagCloseTimeoutRef.current = null;
+            }
+          }}
+          onMouseLeave={() => {
+            tagCloseTimeoutRef.current = setTimeout(() => setShowTagManager(false), 300);
+          }}
+        >
           <TagManager
             sampleId={id}
             sampleTags={tagIds}

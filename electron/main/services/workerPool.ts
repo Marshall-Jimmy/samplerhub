@@ -6,6 +6,7 @@
 import { Worker } from 'node:worker_threads';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import os from 'node:os';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -23,7 +24,7 @@ interface WorkerWrapper {
 }
 
 const pool: WorkerWrapper[] = [];
-let maxWorkers = Math.min(4, Math.max(1, Math.floor((await import('node:os')).default.cpus().length / 2)));
+var maxWorkers = Math.min(4, Math.max(1, Math.floor(os.cpus().length / 2)));
 
 /** 获取 Worker 脚本路径 */
 function getWorkerPath(): string {

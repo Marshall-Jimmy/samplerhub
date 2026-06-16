@@ -9,36 +9,39 @@ type SortDirection = 'asc' | 'desc' | 'none';
 interface LibraryState {
   activeCategoryId: number | null;
   activeFolderPath: string | null;
-  activeSection: 'all' | 'favorites' | 'recent' | 'category' | 'folder' | 'midi';
+  activeSection: 'all' | 'favorites' | 'recent' | 'category' | 'folder' | 'midi' | 'smartFolder';
   selectedSampleId: number | null;
   searchQuery: string;
   viewMode: ViewMode;
   sortField: SortField;
   sortDirection: SortDirection;
   isScanning: boolean;
+  activeSmartFolderId: number | null;
   scanProgresses: Map<string, {
     current: number;
     total: number;
     currentFile: string;
     phase: string;
     folderPath: string;
+    ffmpegMissing?: boolean;
   }>;
 
-  // 多选 - 用数组而非 Set，避免序列化问题
-  selectedIds: number[];
+  // 多选 - 使用 Set 提高查找性能，序列化时自动转换
+  selectedIds: Set<number>;
   isMultiSelectMode: boolean;
   lastClickedIndex: number;
 
   setActiveCategory: (categoryId: number | null) => void;
   setActiveFolder: (folderPath: string | null) => void;
   setActiveSection: (section: LibraryState['activeSection']) => void;
+  setActiveSmartFolderId: (id: number | null) => void;
   setSelectedSample: (sampleId: number | null) => void;
   setSearchQuery: (query: string) => void;
   setViewMode: (mode: ViewMode) => void;
   setSortField: (field: SortField) => void;
   toggleSortDirection: () => void;
   setScanning: (scanning: boolean) => void;
-  setScanProgress: (folderPath: string, progress: { current: number; total: number; currentFile: string; phase: string }) => void;
+  setScanProgress: (folderPath: string, progress: { current: number; total: number; currentFile: string; phase: string; ffmpegMissing?: boolean }) => void;
   removeScanProgress: (folderPath: string) => void;
 
   // 多选操作
@@ -57,6 +60,7 @@ export const useLibraryStore = create<LibraryState>()(
       activeCategoryId: null,
       activeFolderPath: null,
       activeSection: 'all',
+      activeSmartFolderId: null,
       selectedSampleId: null,
       searchQuery: '',
       viewMode: 'list',
@@ -64,7 +68,7 @@ export const useLibraryStore = create<LibraryState>()(
       sortDirection: 'asc',
       isScanning: false,
       scanProgresses: new Map(),
-      selectedIds: [],
+      selectedIds: new Set(),
       isMultiSelectMode: false,
       lastClickedIndex: -1,
 
@@ -72,19 +76,26 @@ export const useLibraryStore = create<LibraryState>()(
         activeCategoryId: categoryId,
         activeFolderPath: null,
         activeSection: categoryId ? 'category' : 'all',
+        selectedIds: new Set(),
+        isMultiSelectMode: false,
       }),
 
       setActiveFolder: (folderPath) => set({
         activeFolderPath: folderPath,
         activeCategoryId: null,
         activeSection: folderPath ? 'folder' : 'all',
+        selectedIds: new Set(),
+        isMultiSelectMode: false,
       }),
 
       setActiveSection: (section) => set({
         activeSection: section,
         activeCategoryId: null,
         activeFolderPath: null,
+        selectedIds: new Set(),
+        isMultiSelectMode: false,
       }),
+      setActiveSmartFolderId: (id) => set({ activeSmartFolderId: id }),
 
       setSelectedSample: (sampleId) => set({ selectedSampleId: sampleId }),
       setSearchQuery: (query) => set({ searchQuery: query }),
@@ -124,35 +135,39 @@ export const useLibraryStore = create<LibraryState>()(
 
       toggleSelect: (id) => {
         const { selectedIds } = get();
-        const next = selectedIds.includes(id)
-          ? selectedIds.filter(i => i !== id)
-          : [...selectedIds, id];
-        set({ selectedIds: next, isMultiSelectMode: next.length > 0 });
+        const next = new Set(selectedIds);
+        if (next.has(id)) {
+          next.delete(id);
+        } else {
+          next.add(id);
+        }
+        set({ selectedIds: next, isMultiSelectMode: next.size > 0 });
       },
 
       selectRange: (ids) => {
         const { selectedIds } = get();
-        const merged = new Set([...selectedIds, ...ids]);
-        set({ selectedIds: Array.from(merged), isMultiSelectMode: true });
+        const merged = new Set(selectedIds);
+        ids.forEach(id => merged.add(id));
+        set({ selectedIds: merged, isMultiSelectMode: true });
       },
 
       selectAll: (allIds) => set({
-        selectedIds: [...allIds],
+        selectedIds: new Set(allIds),
         isMultiSelectMode: true,
       }),
 
       clearSelection: () => set({
-        selectedIds: [],
+        selectedIds: new Set(),
         isMultiSelectMode: false,
         lastClickedIndex: -1,
       }),
 
       setMultiSelectMode: (enabled) => set({
         isMultiSelectMode: enabled,
-        selectedIds: enabled ? get().selectedIds : [],
+        selectedIds: enabled ? get().selectedIds : new Set(),
       }),
 
-      isSelected: (id) => get().selectedIds.includes(id),
+      isSelected: (id) => get().selectedIds.has(id),
 
       setLastClickedIndex: (index) => set({ lastClickedIndex: index }),
     }),

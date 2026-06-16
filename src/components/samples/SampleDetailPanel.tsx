@@ -11,6 +11,7 @@ import {
   CopyOutlined,
   DesktopOutlined,
   ThunderboltOutlined,
+  SoundOutlined,
 } from '@ant-design/icons';
 import type { Sample } from '@shared/types/sample.types';
 import { ipcClient } from '../../services/ipcClient';
@@ -18,6 +19,7 @@ import { usePlayerStore } from '../../stores/playerStore';
 import { getCachedWaveform, drawWaveformToCanvas } from '../../utils/waveformCache';
 import { formatDuration, formatFileSize } from '../../utils/format';
 import SimilarityRadar, { computeSimilarityRadar } from './SimilarityRadar';
+import { MidiPreview } from '../midi/MidiPreview';
 import s from '../../styles/components/sample-detail-panel.module.css';
 
 interface SampleDetailPanelProps {
@@ -47,7 +49,16 @@ const SampleDetailPanel: React.FC<SampleDetailPanelProps> = ({ sample, onClose, 
 
   const { data: similarSamples } = useQuery({
     queryKey: ['similar-samples', sample?.id],
-    queryFn: () => ipcClient.getSimilarSamples(sample!.id, 6),
+    queryFn: async () => {
+      const result = await ipcClient.getSimilarSamples(sample!.id, 6);
+      return result.similar;
+    },
+    enabled: !!sample,
+  });
+
+  const { data: audioSegments } = useQuery({
+    queryKey: ['audio-segments', sample?.id],
+    queryFn: () => ipcClient.getAudioSegments(sample!.id),
     enabled: !!sample,
   });
 
@@ -153,6 +164,7 @@ const SampleDetailPanel: React.FC<SampleDetailPanelProps> = ({ sample, onClose, 
               onPlay={handlePlay}
               onFavorite={onFavorite}
               similarSamples={similarSamples}
+              audioSegments={audioSegments}
               onPlaySample={onPlaySample}
               metaItems={metaItems}
             />
@@ -189,6 +201,7 @@ const SampleDetailPanel: React.FC<SampleDetailPanelProps> = ({ sample, onClose, 
           onPlay={handlePlay}
           onFavorite={onFavorite}
           similarSamples={similarSamples}
+          audioSegments={audioSegments}
           onPlaySample={onPlaySample}
           metaItems={metaItems}
         />
@@ -208,26 +221,57 @@ interface DetailContentProps {
   onPlay: () => void;
   onFavorite: (id: number) => void;
   similarSamples: any;
+  audioSegments?: Array<{
+    id: number;
+    sampleId: number;
+    label: string;
+    displayLabel: string | null;
+    startTime: number;
+    endTime: number;
+    peakProb: number;
+  }>;
   onPlaySample?: (sample: Sample) => void;
   metaItems: { label: string; value: string }[];
 }
 
 const DetailContent: React.FC<DetailContentProps> = ({
   sample, canvasRef, hoverX, setHoverX, isCurrentPlaying,
-  onCanvasClick, onPlay, onFavorite, similarSamples, onPlaySample, metaItems,
+  onCanvasClick, onPlay, onFavorite, similarSamples, audioSegments, onPlaySample, metaItems,
 }) => {
   const { t } = useTranslation();
+
+  // 按标签分组事件段
+  const groupedSegments = React.useMemo(() => {
+    if (!audioSegments || audioSegments.length === 0) return [];
+    const map = new Map<string, typeof audioSegments>();
+    for (const seg of audioSegments) {
+      const key = seg.displayLabel || seg.label;
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(seg);
+    }
+    return Array.from(map.entries()).map(([label, segs]) => ({
+      label,
+      segs: segs.sort((a, b) => a.startTime - b.startTime),
+      maxProb: Math.max(...segs.map(s => s.peakProb)),
+    })).sort((a, b) => b.maxProb - a.maxProb);
+  }, [audioSegments]);
+
   return (
-  <>
-    <div className={s.waveformWrap}>
-      <canvas
-        ref={canvasRef}
-        onClick={onCanvasClick}
-        onMouseMove={e => setHoverX(e.clientX - e.currentTarget.getBoundingClientRect().left)}
-        onMouseLeave={() => setHoverX(null)}
-        className={s.waveform}
-      />
-    </div>
+    <>
+    {/* MIDI 文件显示钢琴卷帘，音频文件显示波形 */}
+    {sample.fileType === 'midi' ? (
+      <MidiPreview sample={sample} />
+    ) : (
+      <div className={s.waveformWrap}>
+        <canvas
+          ref={canvasRef}
+          onClick={onCanvasClick}
+          onMouseMove={e => setHoverX(e.clientX - e.currentTarget.getBoundingClientRect().left)}
+          onMouseLeave={() => setHoverX(null)}
+          className={s.waveform}
+        />
+      </div>
+    )}
 
     <div className={s.playRow}>
       <button onClick={onPlay} className={s.playBtn}>
@@ -268,6 +312,54 @@ const DetailContent: React.FC<DetailContentProps> = ({
             <span key={tag.id} className={s.tag} style={{ background: `${tag.color}18`, color: tag.color, borderColor: `${tag.color}30` }}>
               {tag.name}
             </span>
+          ))}
+        </div>
+      </div>
+    )}
+
+    {/* 频谱推断标签 */}
+    {sample.inferredTags && (
+      <div className={s.tagsSection}>
+        <span className={s.tagsTitle}>{t('detail.inferredTags') || '音频特征'}</span>
+        <div className={s.tagsList}>
+          {sample.inferredTags.split(',').filter(Boolean).map(tag => (
+            <span key={tag} className={s.tag} style={{ background: 'var(--bg-secondary)', color: 'var(--text-secondary)', borderColor: 'var(--border)' }}>
+              {t(`inferredTags.${tag.trim()}`, tag.trim())}
+            </span>
+          ))}
+        </div>
+      </div>
+    )}
+
+    {/* PANNs 音频事件时间轴标签 */}
+    {groupedSegments.length > 0 && (
+      <div className={s.segmentsSection}>
+        <div className={s.segmentsHeader}>
+          <SoundOutlined style={{ fontSize: 12, color: 'var(--brand-primary)' }} />
+          <span className={s.segmentsTitle}>{t('detail.audioSegments')}</span>
+        </div>
+        <div className={s.segmentsList}>
+          {groupedSegments.map(({ label, segs, maxProb }) => (
+            <div key={label} className={s.segmentGroup}>
+              <div className={s.segmentLabel}>
+                <span className={s.segmentName}>{label}</span>
+                <span className={s.segmentProb}>{Math.round(maxProb * 100)}%</span>
+              </div>
+              <div className={s.segmentTimeline}>
+                {segs.map((seg, idx) => (
+                  <div
+                    key={idx}
+                    className={s.segmentBar}
+                    style={{
+                      left: `${(seg.startTime / sample.duration) * 100}%`,
+                      width: `${Math.max(((seg.endTime - seg.startTime) / sample.duration) * 100, 1)}%`,
+                      opacity: 0.4 + seg.peakProb * 0.6,
+                    }}
+                    title={`${label}: ${seg.startTime.toFixed(2)}s - ${seg.endTime.toFixed(2)}s (${Math.round(seg.peakProb * 100)}%)`}
+                  />
+                ))}
+              </div>
+            </div>
           ))}
         </div>
       </div>

@@ -69,7 +69,7 @@
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--text-muted);
+  background: var(--text-disabled);
   flex-shrink: 0;
 }
 
@@ -98,20 +98,17 @@
   }
 }
 
-.sectionBadge {
-  padding: 4px 14px;
-  border-radius: 20px;
-  font-size: 12px;
-  font-weight: 500;
-  background: rgba(99, 102, 241, 0.1);
-  color: var(--brand-primary);
-  border: 1px solid rgba(99, 102, 241, 0.15);
-}
-
 .right {
   display: flex;
   align-items: center;
   gap: 6px;
+}
+
+.divider {
+  width: 1px;
+  height: 20px;
+  background: var(--border-subtle);
+  margin: 0 4px;
 }
 
 .btn {
@@ -141,11 +138,11 @@
 }
 
 .btnActive {
-  background: rgba(99, 102, 241, 0.12);
+  background: color-mix(in srgb, var(--brand-primary) 12%, transparent);
   color: var(--brand-primary);
 }
 
 .btnActive:hover {
-  background: rgba(99, 102, 241, 0.18);
+  background: color-mix(in srgb, var(--brand-primary) 18%, transparent);
   color: var(--brand-primary);
 }

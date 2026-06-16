@@ -86,6 +86,19 @@
   overflow-y: auto;
 }
 
+.emptyHint {
+  padding: 6px 8px;
+  font-size: 11px;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.emptyHint:hover {
+  color: var(--primary);
+  background: rgba(99, 102, 241, 0.06);
+}
+
 .playlistItem {
   display: flex;
   align-items: center;

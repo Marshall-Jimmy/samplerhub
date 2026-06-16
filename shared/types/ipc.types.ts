@@ -72,6 +72,7 @@ export const IPC_CHANNELS = {
   // MIDI
   PARSE_MIDI: 'midi:parse',
   GET_MIDI_PREVIEW: 'midi:getPreview',
+  EXPORT_SEQUENCER_MIDI: 'sequencer:exportMidi',
 
   // 播放列表
   GET_PLAYLISTS: 'playlists:get',
@@ -111,9 +112,12 @@ export const IPC_CHANNELS = {
   ONLINE_SEARCH: 'online:search',
   ONLINE_DOWNLOAD: 'online:download',
   ONLINE_GET_SNDDEV_CATEGORIES: 'online:snddevCategories',
+  ONLINE_CACHE_PREVIEW: 'online:cachePreview',
+  SELECT_ONLINE_DOWNLOAD_FOLDER: 'online:selectDownloadFolder',
 
   // 智能推荐
   GET_SIMILAR_SAMPLES: 'recommend:similar',
+  TEXT_SIMILARITY_SEARCH: 'samples:textSimilaritySearch',
 
   // 文件管理
   GET_DUPLICATES: 'files:duplicates',
@@ -126,6 +130,33 @@ export const IPC_CHANNELS = {
   // 导入/导出
   EXPORT_SAMPLES_JSON: 'export:json',
   EXPORT_SAMPLES_CSV: 'export:csv',
+
+  // 备份/恢复
+  BACKUP_CREATE: 'backup:create',
+  BACKUP_RESTORE: 'backup:restore',
+  BACKUP_LIST: 'backup:list',
+
+  // 配置导入/导出
+  CONFIG_EXPORT: 'config:export',
+  CONFIG_IMPORT: 'config:import',
+
+  // 音频分析
+  AUDIO_ANALYZE_FILE: 'audio:analyzeFile',
+  AUDIO_ANALYZE_BATCH: 'audio:analyzeBatch',
+
+  // 批量重命名
+  GENERATE_BATCH_RENAME: 'samples:generateBatchRename',
+
+  // 引擎导出
+  EXPORT_TO_ENGINE: 'export:toEngine',
+
+  // UCS 分类
+  GET_UCS_CATEGORIES: 'ucs:getCategories',
+  GET_UCS_SUBCATEGORIES: 'ucs:getSubcategories',
+
+  // 交付质检
+  RUN_DELIVERY_QA: 'delivery:runQA',
+  GET_QA_RULES: 'delivery:getRules',
 } as const;
 
 export type IpcChannel = typeof IPC_CHANNELS[keyof typeof IPC_CHANNELS];

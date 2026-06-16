@@ -284,3 +284,75 @@
   color: var(--text-tertiary);
   flex-shrink: 0;
 }
+
+/* PANNs Audio Segments */
+.segmentsSection {
+  margin-top: 16px;
+}
+
+.segmentsHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.segmentsTitle {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  font-weight: 600;
+}
+
+.segmentsList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.segmentGroup {
+  background: var(--bg-base);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.segmentLabel {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.segmentName {
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.segmentProb {
+  font-size: 10px;
+  color: var(--brand-primary);
+  font-weight: 600;
+}
+
+.segmentTimeline {
+  position: relative;
+  height: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.segmentBar {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  background: var(--brand-primary);
+  border-radius: 3px;
+  min-width: 2px;
+  transition: opacity 0.15s;
+}
+
+.segmentBar:hover {
+  opacity: 1 !important;
+  background: #818cf8;
+}

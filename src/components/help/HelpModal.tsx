@@ -7,6 +7,7 @@ import {
   SoundOutlined,
   FolderOutlined,
 } from '@ant-design/icons';
+import { useTranslation } from 'react-i18next';
 
 interface HelpModalProps {
   open: boolean;
@@ -14,6 +15,8 @@ interface HelpModalProps {
 }
 
 const HelpModal: React.FC<HelpModalProps> = ({ open, onClose }) => {
+  const { t } = useTranslation();
+
   const shortcutStyle: React.CSSProperties = {
     display: 'flex',
     alignItems: 'center',
@@ -42,7 +45,7 @@ const HelpModal: React.FC<HelpModalProps> = ({ open, onClose }) => {
       title={
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <QuestionCircleOutlined style={{ color: 'var(--brand-primary)' }} />
-          <span>帮助</span>
+          <span>{t('help.title')}</span>
         </div>
       }
       open={open}
@@ -68,35 +71,35 @@ const HelpModal: React.FC<HelpModalProps> = ({ open, onClose }) => {
         {/* Quick Start */}
         <section>
           <h3 style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 12 }}>
-            快速入门
+            {t('help.quickStart')}
           </h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingLeft: 4 }}>
             <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
               <span style={{ color: 'var(--brand-primary)', fontSize: 16, marginTop: 2 }}><FolderOutlined /></span>
               <div>
-                <p style={{ fontSize: 13, color: 'var(--text-primary)', margin: 0, fontWeight: 500 }}>添加采样文件夹</p>
-                <p style={{ fontSize: 12, color: 'var(--text-tertiary)', margin: '2px 0 0' }}>点击「添加文件夹」按钮选择包含音频文件的目录</p>
+                <p style={{ fontSize: 13, color: 'var(--text-primary)', margin: 0, fontWeight: 500 }}>{t('help.addSampleFolder')}</p>
+                <p style={{ fontSize: 12, color: 'var(--text-tertiary)', margin: '2px 0 0' }}>{t('help.addSampleFolderDesc')}</p>
               </div>
             </div>
             <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
               <span style={{ color: 'var(--brand-primary)', fontSize: 16, marginTop: 2 }}><SearchOutlined /></span>
               <div>
-                <p style={{ fontSize: 13, color: 'var(--text-primary)', margin: 0, fontWeight: 500 }}>搜索与筛选</p>
-                <p style={{ fontSize: 12, color: 'var(--text-tertiary)', margin: '2px 0 0' }}>使用搜索栏按名称搜索，点击筛选按钮按 BPM、调性等条件过滤</p>
+                <p style={{ fontSize: 13, color: 'var(--text-primary)', margin: 0, fontWeight: 500 }}>{t('help.searchAndFilter')}</p>
+                <p style={{ fontSize: 12, color: 'var(--text-tertiary)', margin: '2px 0 0' }}>{t('help.searchAndFilterDesc')}</p>
               </div>
             </div>
             <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
               <span style={{ color: 'var(--brand-primary)', fontSize: 16, marginTop: 2 }}><SoundOutlined /></span>
               <div>
-                <p style={{ fontSize: 13, color: 'var(--text-primary)', margin: 0, fontWeight: 500 }}>预览播放</p>
-                <p style={{ fontSize: 12, color: 'var(--text-tertiary)', margin: '2px 0 0' }}>点击采样卡片上的播放按钮即可预览，底部播放栏可控制进度</p>
+                <p style={{ fontSize: 13, color: 'var(--text-primary)', margin: 0, fontWeight: 500 }}>{t('help.previewPlay')}</p>
+                <p style={{ fontSize: 12, color: 'var(--text-tertiary)', margin: '2px 0 0' }}>{t('help.previewPlayDesc')}</p>
               </div>
             </div>
             <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
               <span style={{ color: 'var(--brand-primary)', fontSize: 16, marginTop: 2 }}><DragOutlined /></span>
               <div>
-                <p style={{ fontSize: 13, color: 'var(--text-primary)', margin: 0, fontWeight: 500 }}>拖拽到 DAW</p>
-                <p style={{ fontSize: 12, color: 'var(--text-tertiary)', margin: '2px 0 0' }}>直接拖拽采样卡片到你的 DAW 轨道中</p>
+                <p style={{ fontSize: 13, color: 'var(--text-primary)', margin: 0, fontWeight: 500 }}>{t('help.dragToDaw')}</p>
+                <p style={{ fontSize: 12, color: 'var(--text-tertiary)', margin: '2px 0 0' }}>{t('help.dragToDawDesc')}</p>
               </div>
             </div>
           </div>
@@ -107,46 +110,46 @@ const HelpModal: React.FC<HelpModalProps> = ({ open, onClose }) => {
         {/* Keyboard Shortcuts */}
         <section>
           <h3 style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 12 }}>
-            键盘快捷键
+            {t('help.keyboardShortcuts')}
           </h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4, paddingLeft: 4 }}>
             <div style={shortcutStyle}>
-              <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>播放 / 暂停</span>
+              <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{t('help.shortcutPlayPause')}</span>
               <span style={keyStyle}>Space</span>
             </div>
             <div style={shortcutStyle}>
-              <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>搜索</span>
+              <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{t('help.shortcutSearch')}</span>
               <div style={{ display: 'flex', gap: 4 }}>
                 <span style={keyStyle}>Ctrl</span>
                 <span style={keyStyle}>F</span>
               </div>
             </div>
             <div style={shortcutStyle}>
-              <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>上一曲</span>
+              <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{t('help.shortcutPrev')}</span>
               <div style={{ display: 'flex', gap: 4 }}>
                 <span style={keyStyle}>Ctrl</span>
-                <span style={keyStyle}>←</span>
+                <span style={keyStyle}>&larr;</span>
               </div>
             </div>
             <div style={shortcutStyle}>
-              <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>下一曲</span>
+              <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{t('help.shortcutNext')}</span>
               <div style={{ display: 'flex', gap: 4 }}>
                 <span style={keyStyle}>Ctrl</span>
-                <span style={keyStyle}>→</span>
+                <span style={keyStyle}>&rarr;</span>
               </div>
             </div>
             <div style={shortcutStyle}>
-              <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>音量增大</span>
+              <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{t('help.shortcutVolumeUp')}</span>
               <div style={{ display: 'flex', gap: 4 }}>
                 <span style={keyStyle}>Ctrl</span>
-                <span style={keyStyle}>↑</span>
+                <span style={keyStyle}>&uarr;</span>
               </div>
             </div>
             <div style={shortcutStyle}>
-              <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>音量减小</span>
+              <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{t('help.shortcutVolumeDown')}</span>
               <div style={{ display: 'flex', gap: 4 }}>
                 <span style={keyStyle}>Ctrl</span>
-                <span style={keyStyle}>↓</span>
+                <span style={keyStyle}>&darr;</span>
               </div>
             </div>
           </div>
@@ -157,7 +160,7 @@ const HelpModal: React.FC<HelpModalProps> = ({ open, onClose }) => {
         {/* Supported Formats */}
         <section>
           <h3 style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 8 }}>
-            支持的音频格式
+            {t('help.supportedFormats')}
           </h3>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, paddingLeft: 4 }}>
             {['WAV', 'MP3', 'FLAC', 'OGG', 'AAC', 'AIFF', 'M4A', 'WMA'].map(fmt => (

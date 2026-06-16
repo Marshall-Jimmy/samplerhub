@@ -64,7 +64,10 @@ const ALLOWED_INVOKE_CHANNELS = new Set<string>([
   IPC_CHANNELS.ONLINE_SEARCH,
   IPC_CHANNELS.ONLINE_DOWNLOAD,
   IPC_CHANNELS.ONLINE_GET_SNDDEV_CATEGORIES,
+  IPC_CHANNELS.ONLINE_CACHE_PREVIEW,
+  IPC_CHANNELS.SELECT_ONLINE_DOWNLOAD_FOLDER,
   IPC_CHANNELS.GET_SIMILAR_SAMPLES,
+  IPC_CHANNELS.TEXT_SIMILARITY_SEARCH,
   IPC_CHANNELS.GET_DUPLICATES,
   IPC_CHANNELS.CLEAN_CORRUPTED,
   IPC_CHANNELS.DELETE_SAMPLES,
@@ -79,15 +82,45 @@ const ALLOWED_INVOKE_CHANNELS = new Set<string>([
   IPC_CHANNELS.GET_PEAK_ENVELOPE,
   IPC_CHANNELS.PARSE_MIDI,
   IPC_CHANNELS.GET_MIDI_PREVIEW,
+  IPC_CHANNELS.EXPORT_SEQUENCER_MIDI,
+  // 音频分析
+  IPC_CHANNELS.AUDIO_ANALYZE_FILE,
+  IPC_CHANNELS.AUDIO_ANALYZE_BATCH,
+  // 备份/恢复
+  IPC_CHANNELS.BACKUP_CREATE,
+  IPC_CHANNELS.BACKUP_RESTORE,
+  IPC_CHANNELS.BACKUP_LIST,
+  // 配置导入/导出
+  IPC_CHANNELS.CONFIG_EXPORT,
+  IPC_CHANNELS.CONFIG_IMPORT,
+  // 批量重命名 + 引擎导出
+  IPC_CHANNELS.GENERATE_BATCH_RENAME,
+  IPC_CHANNELS.EXPORT_TO_ENGINE,
+  IPC_CHANNELS.RUN_DELIVERY_QA,
+  IPC_CHANNELS.GET_QA_RULES,
+  // UCS 分类
+  IPC_CHANNELS.GET_UCS_CATEGORIES,
+  IPC_CHANNELS.GET_UCS_SUBCATEGORIES,
+  'fs:readFile',
+  'audio:getBuffer',
+  'samples:getAudioBuffer',
 ])
 
 const ALLOWED_ON_CHANNELS = new Set<string>([
   IPC_CHANNELS.SCAN_PROGRESS,
   IPC_CHANNELS.LIBRARY_CHANGED,
+  'tray:toggle-play',
+  'window:close-requested',
+  'metadata-job:progress',
+  'metadata-job:complete',
 ])
 
 const ALLOWED_SEND_CHANNELS = new Set<string>([
   'drag:start',
+  'show-item-in-folder',
+  'window:minimize-to-tray',
+  'window:force-quit',
+  'perf:metric',
 ])
 
 // --------- Expose electronAPI to the Renderer process ---------
@@ -128,6 +161,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
     console.warn(`[Preload] sendSync is blocked for security: ${channel}`)
     return undefined
   },
+  // 窗口控制
+  minimize: () => ipcRenderer.invoke('window:minimize'),
+  maximize: () => ipcRenderer.invoke('window:maximize'),
+  close: () => ipcRenderer.invoke('window:close'),
+  createPadWindow: () => ipcRenderer.invoke('window:createPad'),
+  createSequencerWindow: () => ipcRenderer.invoke('window:createSequencer'),
+  setAlwaysOnTop: (flag: boolean) => ipcRenderer.invoke('window:setAlwaysOnTop', { flag }),
+  onMaximizeChange: (callback: (isMaximized: boolean) => void) => ipcRenderer.on('window:maximizeChange', (_event, value) => callback(value)),
+  removeMaximizeListener: () => ipcRenderer.removeAllListeners('window:maximizeChange'),
 })
 
 // --------- Preload scripts loading ---------

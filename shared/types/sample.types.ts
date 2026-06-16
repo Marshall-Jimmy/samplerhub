@@ -20,6 +20,8 @@ export interface Sample {
   playCount: number;
   lastPlayedAt: Date | null;
   indexedAt: Date;
+  /** 频谱推断标签（逗号分隔的英文标签，如 "bright,noisy,kick-like"） */
+  inferredTags?: string | null;
   tags: Tag[];
   category: Category | null;
   // MIDI 专属字段
@@ -95,6 +97,8 @@ export interface ScanProgress {
   total: number;
   currentFile: string;
   phase: 'scanning' | 'parsing' | 'classifying' | 'complete';
+  /** 系统未安装 ffmpeg，非 WAV 格式的频谱分析将被跳过 */
+  ffmpegMissing?: boolean;
 }
 
 export interface SearchResult {

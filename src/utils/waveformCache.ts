@@ -58,7 +58,8 @@ export function getCachedWaveform(sampleId: number, rawData: unknown): number[] 
     const arr = Array.from(float32);
     sampleIdCache.set(sampleId, arr);
     return arr;
-  } catch {
+  } catch (e) {
+    console.debug('[WaveformCache] decode failed:', e);
     return null;
   }
 }
@@ -131,7 +132,8 @@ async function decodeWithWebAudio(filePath: string): Promise<number[] | null> {
     }
 
     return waveform;
-  } catch {
+  } catch (e) {
+    console.debug('[WaveformCache] read cache failed:', e);
     return null;
   } finally {
     audioCtx?.close();
@@ -234,7 +236,19 @@ export function drawWaveformToCanvas(
 
   const dpr = window.devicePixelRatio || 1;
   const rect = canvas.getBoundingClientRect();
-  if (rect.width === 0 || rect.height === 0) return;
+
+  // 如果 Canvas 尚未布局完成，使用 ResizeObserver 延迟重绘
+  if (rect.width === 0 || rect.height === 0) {
+    const observer = new ResizeObserver((entries) => {
+      const { width, height } = entries[0].contentRect;
+      if (width > 0 && height > 0) {
+        observer.disconnect();
+        drawWaveformToCanvas(canvas, waveform, options);
+      }
+    });
+    observer.observe(canvas);
+    return;
+  }
 
   const w = rect.width;
   const h = rect.height;

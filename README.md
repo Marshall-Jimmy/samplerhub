@@ -1,79 +1,107 @@
-# electron-vite-react
+# Jima's SamplerHub
 
-[![awesome-vite](https://awesome.re/mentioned-badge.svg)](https://github.com/vitejs/awesome-vite)
-![GitHub stars](https://img.shields.io/github/stars/electron-vite/electron-vite-react?color=fa6470)
-![GitHub issues](https://img.shields.io/github/issues/electron-vite/electron-vite-react?color=d8b22d)
-![GitHub license](https://img.shields.io/github/license/electron-vite/electron-vite-react)
-[![Required Node.js >= 20.19.0 || >= 22.12.0](https://img.shields.io/static/v1?label=node&message=%3E=20.19.0%20||%20%3E=22.12.0&logo=node.js&color=3f893e)](https://nodejs.org/about/releases)
+> 音乐制作人智能采样管理工作站
 
-English | [简体中文](README.zh-CN.md)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-## Overview
+## 简介
 
-- Ready out of the box.
-- Based on the official [template-react-ts](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts).
-- Supports Electron and Node.js APIs in the renderer process.
-- Supports C/C++ native addons.
-- Includes debugger configuration.
-- Easy to extend to multiple windows.
+Jima's SamplerHub 是一款专为音乐制作人设计的智能采样管理工具。它可以帮你：
 
-## Quick Start
+- 自动扫描和索引本地采样库（支持 WAV、MP3、FLAC、MIDI 等格式）
+- AI 智能分类（Drums、Bass、Synths、FX 等 40+ 类别）
+- 实时波形预览和音频播放
+- BPM/Key 自动检测
+- 全文搜索 + 语义搜索
+- 在线采样库浏览和下载
+- 鼓垫演奏和步进音序器
+- 多语言支持（11 种语言）
 
-```sh
-# clone the project
-git clone https://github.com/electron-vite/electron-vite-react.git
+## 功能特性
 
-# enter the project directory
-cd electron-vite-react
+### 采样管理
+- 自动监控文件夹变化，实时同步
+- 智能分类体系（UCS 标准 + 自定义规则）
+- 标签系统 + 收藏/最近播放
+- 批量导入/导出
+- 重复文件检测
 
-# install dependencies
+### 音频分析
+- BPM 检测
+- 音乐调性识别
+- 音频指纹去重
+- CLAP 语义嵌入（AI 相似度搜索）
+- 波形可视化
+
+### 创作工具
+- 16 格鼓垫演奏
+- 步进音序器
+- 钢琴卷帘
+- 混音台
+
+### 在线资源
+- 集成 Freesound、Pixabay、SND.dev 等免费采样库
+- 一键下载到本地
+
+## 系统要求
+
+- **Windows**: Windows 10/11 (64-bit)
+- **macOS**: macOS 12+ (Intel/Apple Silicon)
+- **内存**: 4GB+ (推荐 8GB)
+- **存储**: 500MB+ 可用空间
+
+## 安装
+
+### 从 Release 下载
+
+1. 访问 [Releases 页面](https://github.com/jimmma/samplerhub/releases)
+2. 下载对应平台的安装包：
+   - Windows: `Jima's SamplerHub_1.0.0_Setup.exe`
+   - macOS: `Jima's SamplerHub_1.0.0.dmg`
+3. 运行安装程序
+
+### 从源码构建
+
+```bash
+# 克隆仓库
+git clone https://github.com/jimmma/samplerhub.git
+cd samplerhub
+
+# 安装依赖
 pnpm install
 
-# start development
+# 开发模式
 pnpm dev
+
+# 构建生产版本
+pnpm build
 ```
 
-## Available Scripts
+## 快捷键
 
-- `pnpm dev`: start the Vite dev server.
-- `pnpm build`: build the renderer and package the app with electron-builder.
-- `pnpm preview`: preview the production web build locally.
-- `pnpm test`: run Vitest unit tests.
-- `pnpm test:e2e`: build the test mode bundle and run Playwright tests.
-- `pnpm typecheck`: run the TypeScript type checker.
+| 快捷键 | 功能 |
+|--------|------|
+| `Space` | 播放/暂停 |
+| `→` | 下一个采样 |
+| `←` | 上一个采样 |
+| `F` | 收藏/取消收藏 |
+| `Ctrl + F` | 聚焦搜索框 |
+| `Ctrl + 1~5` | 切换视图模式 |
+| `Ctrl + ,` | 打开设置 |
+| `Ctrl + Q` | 退出应用 |
 
-## Project Structure
+## 技术栈
 
-```tree
-├── build/            Packaging assets
-├── dist-electron/    Compiled Electron output
-├── electron/         Main-process and preload source
-│   ├── main/
-│   └── preload/
-├── public/           Static assets
-├── src/              Renderer source code
-│   ├── components/
-│   │   └── update/
-│   ├── demos/
-│   └── type/
-└── test/             Unit and end-to-end tests
-    └── e2e/
-```
+- **前端**: React 18 + TypeScript + TailwindCSS + Ant Design
+- **桌面**: Electron 31
+- **数据库**: SQLite (better-sqlite3) + Drizzle ORM
+- **音频**: Howler.js + Tone.js + Web Audio API
+- **构建**: Vite + electron-builder
 
-Files under `electron/` are compiled into `dist-electron/`.
+## 开源协议
 
-## Security Note
+[MIT](LICENSE)
 
-The `renderer: {}` preset in `vite.config.ts` is only a Vite adapter that polyfills Electron, Node.js APIs and native modules for the renderer process. It is not the same as enabling Node integration. If you want direct Node.js access in the renderer, enable `nodeIntegration` in the `BrowserWindow` webPreferences in the main process and review the security impact carefully.
+---
 
-## Features
-
-1. Electron auto update with docs in [src/components/update/README.md](src/components/update/README.md).
-2. Vitest unit tests and Playwright end-to-end tests.
-3. TailwindCSS v4.
-
-## Resources
-
-- Auto-update docs: [English](src/components/update/README.md) | [简体中文](src/components/update/README.zh-CN.md)
-- [C/C++ addons, Node.js modules - Pre-Bundling](https://github.com/electron-vite/vite-plugin-electron-renderer#dependency-pre-bundling)
-- [dependencies vs devDependencies](https://github.com/electron-vite/vite-plugin-electron-renderer#dependencies-vs-devdependencies)
+Made with ❤️ by jimmma

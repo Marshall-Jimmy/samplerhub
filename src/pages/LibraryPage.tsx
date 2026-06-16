@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Input, Button, Dropdown, Menu } from 'antd';
+import { Input, Button, Dropdown, Menu, Modal } from 'antd';
 import { useTranslation } from 'react-i18next';
 import { handleIpcError } from '../utils/ipcError';
 import { toast } from 'sonner';
@@ -25,6 +25,7 @@ import {
   DesktopOutlined,
   ClockCircleOutlined,
   CloseCircleOutlined,
+  CompassOutlined,
   FileZipOutlined,
   CheckOutlined,
   DownOutlined,
@@ -68,6 +69,7 @@ const LibraryPage: React.FC = () => {
     activeCategoryId,
     activeFolderPath,
     activeSection,
+    activeSmartFolderId,
     viewMode,
     sortField,
     sortDirection,
@@ -100,6 +102,8 @@ const LibraryPage: React.FC = () => {
   const [showSearchHistory, setShowSearchHistory] = useState(false);
   const [advancedFilters, setAdvancedFilters] = useState<SearchFilters>({});
   const [focusedIndex, setFocusedIndex] = useState(-1);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const [isSemanticSearch, setIsSemanticSearch] = useState(false);
   const listRef = useRef<List>(null);
   const searchInputRef = useRef<any>(null);
   const { showMenu, MenuComponent } = useContextMenu();
@@ -134,7 +138,7 @@ const LibraryPage: React.FC = () => {
   const PAGE_SIZE = 200;
 
   const { data: searchResult, isLoading } = useQuery({
-    queryKey: ['samples', cleanFilters, activeSection],
+    queryKey: ['samples', cleanFilters, activeSection, activeSmartFolderId, isSemanticSearch],
     queryFn: async () => {
       if (activeSection === 'favorites') {
         const items = await ipcClient.getFavorites();
@@ -142,6 +146,20 @@ const LibraryPage: React.FC = () => {
       }
       if (activeSection === 'recent') {
         const items = await ipcClient.getRecent();
+        return { items, total: items.length };
+      }
+      if (activeSection === 'smartFolder') {
+        const smartFolderId = useLibraryStore.getState().activeSmartFolderId;
+        if (smartFolderId) {
+          const result = await ipcClient.querySmartFolder(smartFolderId);
+          return { items: result.samples, total: result.total };
+        }
+        return { items: [], total: 0 };
+      }
+      // 语义搜索模式
+      if (isSemanticSearch && cleanFilters.query) {
+        const keywords = cleanFilters.query.split(/\s+/).filter(Boolean);
+        const items = await ipcClient.semanticSearch(keywords, 200);
         return { items, total: items.length };
       }
       return ipcClient.searchSamples(cleanFilters);
@@ -251,7 +269,7 @@ const LibraryPage: React.FC = () => {
 
     // MIDI
     if (activeSection === 'midi') {
-      items.push({ label: t('sidebar.midi', 'MIDI'), onClick: () => {} });
+      items.push({ label: t('sidebar.midi'), onClick: () => {} });
       return items;
     }
 
@@ -311,6 +329,8 @@ const LibraryPage: React.FC = () => {
       if (progress.phase === 'complete') {
         removeScanProgress(folderPath);
         queryClient.invalidateQueries({ queryKey: ['samples'] });
+        queryClient.invalidateQueries({ queryKey: ['folderTree'] });
+        toast.success(t('library.scanComplete'));
       } else {
         setScanProgress(folderPath, progress);
       }
@@ -326,7 +346,7 @@ const LibraryPage: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['samples'] });
     });
     return () => { unsubProgress(); unsubChanged(); };
-  }, [setScanProgress, removeScanProgress, setScanning, queryClient]);
+  }, [setScanProgress, removeScanProgress, setScanning, queryClient, t]);
 
   const handlePlay = useCallback((id: number) => {
     const sample = samples?.find(s => s.id === id);
@@ -340,12 +360,19 @@ const LibraryPage: React.FC = () => {
     ipcClient.addRecent(id).catch(() => {});
   }, [samples]);
 
+  const favoriteLockRef = useRef<Set<number>>(new Set());
+
   const handleFavorite = useCallback(async (id: number) => {
+    if (favoriteLockRef.current.has(id)) return; // 防止重复
+    favoriteLockRef.current.add(id);
     try {
       await ipcClient.toggleFavorite(id);
       queryClient.invalidateQueries({ queryKey: ['samples'] });
     } catch (err) {
       handleIpcError(err);
+    } finally {
+      // 延迟清除锁，确保查询刷新完成
+      setTimeout(() => favoriteLockRef.current.delete(id), 500);
     }
   }, [queryClient]);
 
@@ -381,7 +408,14 @@ const LibraryPage: React.FC = () => {
     try {
       setScanning(true);
       const result = await ipcClient.startScan(null);
-      if (!result) setScanning(false);
+      if (!result) {
+        setScanning(false);
+        return;
+      }
+      // 导入成功，显示提示并刷新列表
+      toast.success(t('library.scanComplete', { added: result.added, updated: result.updated }));
+      queryClient.invalidateQueries({ queryKey: ['samples'] });
+      queryClient.invalidateQueries({ queryKey: ['folderTree'] });
     } catch (err) {
       handleIpcError(err);
       setScanning(false);
@@ -433,7 +467,64 @@ const LibraryPage: React.FC = () => {
     onSelectAll: useCallback(() => {
       selectAll(displaySamples.map(s => s.id));
     }, [displaySamples, selectAll]),
+    onUndo: useCallback(async () => {
+      const { useHistoryStore } = await import('../stores/historyStore');
+      const history = useHistoryStore.getState();
+      if (history.canUndo()) {
+        await history.undo();
+        toast.success(t('history.undoSuccess'));
+      }
+    }, [t]),
+    onRedo: useCallback(async () => {
+      const { useHistoryStore } = await import('../stores/historyStore');
+      const history = useHistoryStore.getState();
+      if (history.canRedo()) {
+        await history.redo();
+        toast.success(t('history.redoSuccess'));
+      }
+    }, [t]),
   });
+
+  const handleBatchDelete = useCallback(async () => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+
+    Modal.confirm({
+      title: t('library.batchDeleteConfirmTitle', { count: ids.length }),
+      content: t('library.batchDeleteConfirmContent'),
+      okText: t('library.batchDeleteConfirmOk'),
+      okButtonProps: { danger: true },
+      cancelText: t('library.batchDeleteConfirmCancel'),
+      onOk: async () => {
+        try {
+          const result = await ipcClient.deleteSamples(ids);
+          if (result.success && result.data) {
+            // 注册撤销命令
+            const { useHistoryStore } = await import('../stores/historyStore');
+            useHistoryStore.getState().execute({
+              id: `delete-${Date.now()}`,
+              type: 'deleteSamples',
+              label: t('history.deleteSamples', { count: ids.length }),
+              timestamp: Date.now(),
+              do: async () => { /* 已执行 */ },
+              undo: async () => {
+                await ipcClient.restoreSamples({
+                  samples: result.data!.deletedSamples,
+                  tags: result.data!.deletedTags,
+                });
+                queryClient.invalidateQueries({ queryKey: ['samples'] });
+              },
+            });
+            toast.success(t('library.batchDeleteSuccess', { count: ids.length }));
+            clearSelection();
+            queryClient.invalidateQueries({ queryKey: ['samples'] });
+          }
+        } catch (err) {
+          handleIpcError(err);
+        }
+      },
+    });
+  }, [selectedIds, clearSelection, t]);
 
   // Keyboard navigation for sample list
   const handleListKeyDown = useCallback((e: React.KeyboardEvent) => {
@@ -481,11 +572,18 @@ const LibraryPage: React.FC = () => {
       case 'Delete':
       case 'Backspace':
         if (focusedIndex >= 0 && focusedIndex < displaySamples.length && !e.metaKey && !e.ctrlKey) {
-          toggleSelect(displaySamples[focusedIndex].id);
+          // 如果已有多选，执行批量删除；否则先选中再删除
+          if (selectedIds.size > 0) {
+            handleBatchDelete();
+          } else {
+            toggleSelect(displaySamples[focusedIndex].id);
+            // 选中后立即触发删除
+            setTimeout(() => handleBatchDelete(), 50);
+          }
         }
         break;
     }
-  }, [displaySamples, focusedIndex, handlePlay, toggleSelect, isMultiSelectMode, clearSelection, selectAll]);
+  }, [displaySamples, focusedIndex, handlePlay, toggleSelect, isMultiSelectMode, clearSelection, selectAll, selectedIds, handleBatchDelete]);
 
   const handleSampleContextMenu = useCallback((e: React.MouseEvent, sample: Sample) => {
     const items: ContextMenuItem[] = [
@@ -502,20 +600,13 @@ const LibraryPage: React.FC = () => {
           usePlaylistStore.getState().createPlaylist(t('sidebar.defaultPlaylist')).then(p => { usePlaylistStore.getState().addToPlaylist(p.id, [sample.id]); });
         } else { usePlaylistStore.getState().addToPlaylist(playlists[0].id, [sample.id]); }
       }},
-      { key: 'select', label: selectedIds.includes(sample.id) ? t('contextMenu.deselect') : t('contextMenu.select'), icon: <SelectOutlined />, onClick: () => toggleSelect(sample.id) },
+      { key: 'select', label: selectedIds.has(sample.id) ? t('contextMenu.deselect') : t('contextMenu.select'), icon: <SelectOutlined />, onClick: () => toggleSelect(sample.id) },
       { key: 'info', label: t('contextMenu.viewDetail'), icon: <InfoCircleOutlined />, onClick: () => { setDetailSample(sample); } },
       { key: 'divider3', label: '', divider: true, onClick: () => {} },
       { key: 'delete', label: t('contextMenu.delete'), icon: <DeleteOutlined />, danger: true, onClick: () => {} },
     ];
     showMenu(e, items);
   }, [handlePlay, handleFavorite, selectedIds, toggleSelect, showMenu]);
-
-  const handleBatchDelete = useCallback(async () => {
-    const ids = Array.from(selectedIds);
-    if (ids.length === 0) return;
-    console.log('Batch delete:', ids);
-    clearSelection();
-  }, [selectedIds, clearSelection]);
 
   const handleBatchExport = useCallback(async () => {
     const ids = Array.from(selectedIds);
@@ -573,6 +664,8 @@ const LibraryPage: React.FC = () => {
     const isDragTarget = dragOverIndex === index && dragIndex !== null && dragIndex !== index;
     return (
       <div
+        role="listitem"
+        aria-label={t('a11y.sampleItem') + ' ' + sample.fileName}
         style={{
           ...style,
           ...(isDragTarget ? { borderTop: '2px solid var(--brand-primary)' } : {}),
@@ -598,11 +691,11 @@ const LibraryPage: React.FC = () => {
           fileType={sample.fileType}
           isFavorite={sample.isFavorite}
           isFocused={focusedIndex === index}
-          isSelected={selectedIds.includes(sample.id)}
+          isSelected={selectedIds.has(sample.id)}
           isMultiSelectMode={isMultiSelectMode}
           index={index}
           isCorrupted={sample.isCorrupted}
-          tagIds={sample.tags?.map(t => t.id) || []}
+          tagIds={sample.tags?.map((t: { id: number }) => t.id) || []}
           onPlay={handlePlay}
           onFavorite={handleFavorite}
           onSelect={handleSelect}
@@ -616,6 +709,60 @@ const LibraryPage: React.FC = () => {
   useEffect(() => {
     listRef.current?.scrollTo(0);
   }, [activeSection, activeCategoryId, activePlaylistId]);
+
+  // 拖放导入：监听全局拖放事件
+  useEffect(() => {
+    const AUDIO_EXTENSIONS = new Set(['.wav', '.mp3', '.flac', '.ogg', '.aiff', '.aif', '.m4a', '.aac', '.wma', '.mid', '.midi']);
+
+    const handleDragOver = (e: DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.dataTransfer?.types.includes('Files')) {
+        setIsDragOver(true);
+        e.dataTransfer.dropEffect = 'copy';
+      }
+    };
+
+    const handleDragLeave = (e: DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      // 只在离开窗口时取消
+      if (e.relatedTarget === null) {
+        setIsDragOver(false);
+      }
+    };
+
+    const handleDrop = async (e: DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setIsDragOver(false);
+
+      const files = Array.from(e.dataTransfer?.files || []);
+      const audioFiles = files.filter(f => {
+        const ext = '.' + f.name.split('.').pop()?.toLowerCase();
+        return AUDIO_EXTENSIONS.has(ext);
+      });
+
+      if (audioFiles.length === 0) return;
+
+      try {
+        const result = await ipcClient.importFiles(audioFiles.map(f => f.path));
+        toast.success(t('library.importSuccess', { imported: result.imported, skipped: result.skipped }));
+        queryClient.invalidateQueries({ queryKey: ['samples'] });
+      } catch (err) {
+        handleIpcError(err);
+      }
+    };
+
+    document.addEventListener('dragover', handleDragOver);
+    document.addEventListener('dragleave', handleDragLeave);
+    document.addEventListener('drop', handleDrop);
+    return () => {
+      document.removeEventListener('dragover', handleDragOver);
+      document.removeEventListener('dragleave', handleDragLeave);
+      document.removeEventListener('drop', handleDrop);
+    };
+  }, [queryClient, t]);
 
   const SortHeader: React.FC<{ field: string; label: string; width?: number }> = ({ field, label, width }) => {
     const isActive = sortField === field && sortDirection !== 'none';
@@ -641,13 +788,29 @@ const LibraryPage: React.FC = () => {
 
   return (
     <div className={s.container}>
+      {/* 拖放覆盖层 */}
+      <AnimatePresence>
+        {isDragOver && (
+          <motion.div
+            className={s.dropOverlay}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <div className={s.dropOverlayContent}>
+              <span style={{ fontSize: 48 }}>🎵</span>
+              <span>{t('library.dropToImport')}</span>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
       <div className={s.mainColumn}>
       {/* Header section */}
       <div className={s.header}>
         <div className={s.headerRow}>
           <div>
             <h1 className={s.title}>
-              {isPlaylistView ? playlists.find(p => p.id === activePlaylistId)?.name || t('sidebar.playlists') : activeSection === 'favorites' ? t('sidebar.favorites') : activeSection === 'recent' ? t('sidebar.recent') : activeSection === 'midi' ? t('sidebar.midi', 'MIDI') : activeSection === 'folder' ? (activeFolderPath?.split(/[/\\]/).pop() || t('sidebar.files', '文件')) : t('sidebar.library')}
+              {isPlaylistView ? playlists.find(p => p.id === activePlaylistId)?.name || t('sidebar.playlists') : activeSection === 'favorites' ? t('sidebar.favorites') : activeSection === 'recent' ? t('sidebar.recent') : activeSection === 'midi' ? t('sidebar.midi') : activeSection === 'smartFolder' ? t('sidebar.smartFolders') : activeSection === 'folder' ? (activeFolderPath?.split(/[/\\]/).pop() || t('sidebar.files')) : t('sidebar.library')}
             </h1>
             {displaySamples && displaySamples.length > 0 && (
               <p className={s.subtitle}>{t('library.sampleCount', { count: (totalSamples || displaySamples.length).toLocaleString() })}</p>
@@ -656,13 +819,16 @@ const LibraryPage: React.FC = () => {
 
           <div className={s.headerActions}>
             {/* View switcher */}
-            <div className={s.viewSwitcher}>
+            <div className={s.viewSwitcher} role="group" aria-label={t('library.viewMode', '视图模式')}>
               {viewButtons.map(btn => (
                 <button
                   key={btn.mode}
                   onClick={() => setViewMode(btn.mode)}
                   title={btn.label}
                   className={`${s.viewBtn} ${viewMode === btn.mode ? s.viewBtnActive : ''}`}
+                  aria-label={btn.label}
+                  aria-pressed={viewMode === btn.mode}
+                  role="button"
                 >
                   {btn.icon}
                 </button>
@@ -703,6 +869,15 @@ const LibraryPage: React.FC = () => {
                 </span>
               </div>
             ))}
+            {/* ffmpeg 缺失提示 */}
+            {Array.from(scanProgresses.values()).some(p => p.ffmpegMissing) && (
+              <div className={s.ffmpegWarning}>
+                <span>{t('library.ffmpegMissing')}</span>
+                <a href="https://ffmpeg.org/download.html" target="_blank" rel="noopener noreferrer">
+                  {t('library.ffmpegDownload')}
+                </a>
+              </div>
+            )}
           </div>
         )}
 
@@ -742,12 +917,25 @@ const LibraryPage: React.FC = () => {
             ref={searchInputRef}
             prefix={<SearchOutlined style={{ color: 'var(--text-tertiary)', marginRight: 8 }} />}
             suffix={
-              <button
-                onClick={() => setShowSearchPanel(!showSearchPanel)}
-                className={`${s.filterToggle} ${showSearchPanel ? s.filterToggleActive : ''}`}
-              >
-                <FilterOutlined /> {t('library.filter')}
-              </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <button
+                  onClick={() => setIsSemanticSearch(!isSemanticSearch)}
+                  className={`${s.filterToggle} ${isSemanticSearch ? s.filterToggleActive : ''}`}
+                  title={t('library.semanticSearch') || '语义搜索'}
+                  aria-label={t('library.semanticSearch') || '语义搜索'}
+                  aria-pressed={isSemanticSearch}
+                >
+                  <CompassOutlined />
+                </button>
+                <button
+                  onClick={() => setShowSearchPanel(!showSearchPanel)}
+                  className={`${s.filterToggle} ${showSearchPanel ? s.filterToggleActive : ''}`}
+                  aria-label={t('library.filter')}
+                  aria-pressed={showSearchPanel}
+                >
+                  <FilterOutlined /> {t('library.filter')}
+                </button>
+              </div>
             }
             placeholder={t('library.search')}
             value={searchQuery}
@@ -756,7 +944,9 @@ const LibraryPage: React.FC = () => {
             onPressEnter={() => {
               if (searchQuery.trim()) { addSearchQuery(searchQuery.trim()); setShowSearchHistory(false); }
             }}
+            allowClear
             size="large"
+            aria-label={t('a11y.searchSamples')}
             style={{
               borderRadius: 'var(--radius-lg)', height: 44,
               background: 'var(--bg-elevated)',
@@ -894,10 +1084,10 @@ const LibraryPage: React.FC = () => {
                   <div style={{ width: 52, flexShrink: 0 }} />
                 </div>
 
-                <div style={{ flex: 1 }}>
+                <div style={{ flex: 1 }} role="list" aria-label={t('a11y.sampleList')}>
                   <AutoSizer disableWidth>
                     {({ height }) => (
-                      <List ref={listRef} height={height} itemCount={displaySamples.length} itemSize={ROW_HEIGHT} width="100%" overscanCount={10} style={{ outline: 'none' }} aria-label={t('library.sampleList')}>
+                      <List ref={listRef} height={height} itemCount={displaySamples.length} itemSize={ROW_HEIGHT} width="100%" overscanCount={10} style={{ outline: 'none' }}>
                         {Row}
                       </List>
                     )}
@@ -921,7 +1111,7 @@ const LibraryPage: React.FC = () => {
                     const sample = displaySamples[idx];
                     return (
                       <div style={{ ...style, padding: '0 6px 12px' }}>
-                        <GridSampleCard sample={sample} isSelected={selectedIds.includes(sample.id)} isMultiSelectMode={isMultiSelectMode} index={idx} onPlay={handlePlay} onFavorite={handleFavorite} onSelect={handleSelect} onContextMenu={handleSampleContextMenu} />
+                        <GridSampleCard sample={sample} isSelected={selectedIds.has(sample.id)} isMultiSelectMode={isMultiSelectMode} index={idx} onPlay={handlePlay} onFavorite={handleFavorite} onSelect={handleSelect} onContextMenu={handleSampleContextMenu} />
                       </div>
                     );
                   };
@@ -944,7 +1134,7 @@ const LibraryPage: React.FC = () => {
                       const sample = displaySamples[index];
                       return (
                         <div style={style}>
-                          <WaveformSampleRow sample={sample} currentTime={currentSampleId === sample.id ? currentTime : 0} isSelected={selectedIds.includes(sample.id)} isMultiSelectMode={isMultiSelectMode} index={index} onPlay={handlePlay} onFavorite={handleFavorite} onSelect={handleSelect} onSeek={handleSeek} onContextMenu={handleSampleContextMenu} />
+                          <WaveformSampleRow sample={sample} currentTime={currentSampleId === sample.id ? currentTime : 0} isSelected={selectedIds.has(sample.id)} isMultiSelectMode={isMultiSelectMode} index={index} onPlay={handlePlay} onFavorite={handleFavorite} onSelect={handleSelect} onSeek={handleSeek} onContextMenu={handleSampleContextMenu} />
                         </div>
                       );
                     }}
@@ -969,7 +1159,7 @@ const LibraryPage: React.FC = () => {
 
       {/* Batch action bar */}
       <AnimatePresence>
-        {isMultiSelectMode && selectedIds.length > 0 && (
+        {isMultiSelectMode && selectedIds.size > 0 && (
           <motion.div
             initial={{ y: 80, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
@@ -978,7 +1168,7 @@ const LibraryPage: React.FC = () => {
             className={s.batchBar}
           >
             <span className={s.batchInfo}>
-              {t('library.batch.selected')} <span className={s.batchCount}>{selectedIds.length}</span> {t('library.batch.items')}
+              {t('library.batch.selected')} <span className={s.batchCount}>{selectedIds.size}</span> {t('library.batch.items')}
             </span>
             <div style={{ width: 1, height: 20, background: 'var(--border-subtle)' }} />
             <div className={s.batchActions}>
@@ -1030,10 +1220,10 @@ const LibraryPage: React.FC = () => {
                   ...(usePlaylistStore.getState().playlists || []).map(pl => ({
                     key: String(pl.id),
                     label: pl.name,
-                    onClick: () => { usePlaylistStore.getState().addToPlaylist(pl.id, selectedIds); toast.success(t('library.batch.addedToList', '已添加到播放列表')); },
+                    onClick: () => { usePlaylistStore.getState().addToPlaylist(pl.id, Array.from(selectedIds)); toast.success(t('library.batch.addedToList', '已添加到播放列表')); },
                   })),
                   { key: 'new', label: `+ ${t('library.batch.newPlaylist', '新建播放列表')}`, onClick: () => {
-                    usePlaylistStore.getState().createPlaylist(t('sidebar.defaultPlaylist')).then(p => { usePlaylistStore.getState().addToPlaylist(p.id, selectedIds); toast.success(t('library.batch.addedToList', '已添加到播放列表')); });
+                    usePlaylistStore.getState().createPlaylist(t('sidebar.defaultPlaylist')).then(p => { usePlaylistStore.getState().addToPlaylist(p.id, Array.from(selectedIds)); toast.success(t('library.batch.addedToList', '已添加到播放列表')); });
                   }},
                 ],
               }} trigger={['click']}>
@@ -1054,7 +1244,7 @@ const LibraryPage: React.FC = () => {
               {/* 拖拽到 DAW */}
               <Button size="small" icon={<DesktopOutlined />} onClick={() => {
                 const paths = displaySamples
-                  ?.filter(s => selectedIds.includes(s.id))
+                  ?.filter(s => selectedIds.has(s.id))
                   .map(s => s.filePath) ?? [];
                 if (paths.length > 0) ipcClient.startDrag(paths);
               }}>{t('library.batch.dragToDAW')}</Button>

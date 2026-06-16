@@ -30,6 +30,15 @@ interface CategoryTreeProps {
 }
 
 const categoryColorMap: Record<string, string> = {
+  // 父分类
+  'Drums': '#EF4444',
+  'Bass': '#38BDF8',
+  'Synths': '#818CF8',
+  'Instruments': '#F59E0B',
+  'Loops': '#A3E635',
+  'Vocal & FX': '#FB7185',
+  'Uncategorized': '#6B7280',
+  // Drums 子分类
   'Kick': '#EF4444',
   'Snare': '#F59E0B',
   'Clap': '#FB923C',
@@ -38,17 +47,49 @@ const categoryColorMap: Record<string, string> = {
   '808 Bass': '#22D3EE',
   'Percussion': '#A78BFA',
   'Rim': '#C084FC',
-  'Bass': '#38BDF8',
-  'Synth': '#818CF8',
-  'Vocal': '#FB7185',
-  'FX': '#34D399',
+  'Shaker': '#FBBF24',
+  'Tom': '#F87171',
+  'Cymbal': '#FDE68A',
+  'Crash': '#FCA5A5',
+  'Ride': '#FED7AA',
+  // Bass 子分类
+  'Sub Bass': '#0EA5E9',
+  'Acoustic Bass': '#06B6D4',
+  // Synths 子分类
+  'Synth Lead': '#818CF8',
+  'Pad': '#67E8F9',
+  'Pluck': '#A5B4FC',
+  'Arp': '#C4B5FD',
+  'Chord': '#DDD6FE',
+  'Stab': '#E9D5FF',
+  // Instruments 子分类
+  'Piano': '#F59E0B',
+  'Guitar': '#D97706',
+  'Electric Guitar': '#B45309',
+  'Bass Guitar': '#92400E',
+  'Violin': '#DC2626',
+  'Cello': '#991B1B',
+  'Strings': '#7C3AED',
+  'Brass': '#D97706',
+  'Woodwind': '#059669',
+  'Organ': '#4338CA',
+  'Flute': '#0891B2',
+  'Saxophone': '#BE185D',
+  // Loops 子分类
   'Drum Loop': '#F472B6',
   'Top Loop': '#E879F9',
-  'Shaker': '#FBBF24',
-  'Pad': '#67E8F9',
   'Loop': '#A3E635',
+  'Instrument Loop': '#86EFAC',
+  'Vocal Loop': '#FDA4AF',
+  // Vocal & FX 子分类
+  'Vocal': '#FB7185',
+  'Vocal Chop': '#F43F5E',
+  'FX': '#34D399',
+  'Riser': '#F97316',
+  'Impact': '#EF4444',
+  'Sweep': '#06B6D4',
+  'Transition': '#8B5CF6',
   'One Shot': '#60A5FA',
-  'Uncategorized': '#6B7280',
 };
 
 const CategoryTree: React.FC<CategoryTreeProps> = ({ activeSection, onSectionChange }) => {
@@ -63,22 +104,53 @@ const CategoryTree: React.FC<CategoryTreeProps> = ({ activeSection, onSectionCha
     queryFn: () => ipcClient.getCategories(),
   });
 
+  const [filesSectionExpanded, setFilesSectionExpanded] = useState(false);
+
   const { data: folderTree } = useQuery({
     queryKey: ['folderTree'],
     queryFn: () => ipcClient.getFolderTree(),
+    enabled: filesSectionExpanded, // 只有展开文件面板时才加载
+    staleTime: 10 * 60 * 1000, // 10 分钟内不重新请求
   });
 
-  const dbCategoryNodes: CategoryNode[] = (categories || []).map((cat: Category) => {
-    const color = categoryColorMap[cat.name] || '#6B7280';
-    return {
-      id: `cat-${cat.id}`,
-      name: cat.name,
-      icon: <CategoryIcon name={cat.name} size={14} color={color} />,
-      color,
-      isSystem: cat.isSystem,
-      dbId: cat.id,
+  const dbCategoryNodes: CategoryNode[] = React.useMemo(() => {
+    const cats = categories || [];
+    // 从扁平列表构建树形结构
+    const catMap = new Map<number, Category>();
+    cats.forEach((cat: Category) => catMap.set(cat.id, cat));
+    
+    // 为每个分类填充 children
+    cats.forEach((cat: Category) => {
+      if (cat.parentId !== null && cat.parentId !== undefined) {
+        const parent = catMap.get(cat.parentId);
+        if (parent) {
+          if (!parent.children) parent.children = [];
+          parent.children.push(cat);
+        }
+      }
+    });
+    
+    // 构建节点
+    const buildNode = (cat: Category): CategoryNode => {
+      const color = categoryColorMap[cat.name] || '#6B7280';
+      const childNodes = (cat.children || []).sort((a, b) => a.sortOrder - b.sortOrder).map(buildNode);
+      return {
+        id: `cat-${cat.id}`,
+        name: cat.name,
+        icon: <CategoryIcon name={cat.name} size={14} color={color} />,
+        color,
+        isSystem: cat.isSystem,
+        dbId: cat.id,
+        children: childNodes.length > 0 ? childNodes : undefined,
+      };
     };
-  });
+    
+    // 只渲染顶层分类（parentId === null）
+    return cats
+      .filter((cat: Category) => cat.parentId === null || cat.parentId === undefined)
+      .sort((a: Category, b: Category) => a.sortOrder - b.sortOrder)
+      .map(buildNode);
+  }, [categories]);
 
   const toggleExpand = useCallback((id: string) => {
     setExpandedIds(prev => {
@@ -280,41 +352,49 @@ const CategoryTree: React.FC<CategoryTreeProps> = ({ activeSection, onSectionCha
         )}
       </AnimatePresence>
 
-      {/* 文件组 - 可折叠 */}
-      {folderTree && folderTree.length > 0 && (
-        <>
-          <div
-            className={s.groupHeader}
-            onClick={() => setFilesCollapsed(!filesCollapsed)}
-            role="button"
-            tabIndex={0}
-            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setFilesCollapsed(!filesCollapsed); } }}
-          >
-            <motion.span
-              animate={{ rotate: filesCollapsed ? 0 : 90 }}
-              transition={{ duration: 0.15 }}
-              className={s.groupArrow}
-            >
-              <CaretRightOutlined />
-            </motion.span>
-            <span className={s.treeLabel}>{t('sidebar.files', '文件')}</span>
-          </div>
+      {/* 文件组 - 可折叠，默认折叠，展开时才加载 folderTree */}
+      <div
+        className={s.groupHeader}
+        onClick={() => {
+          const next = !filesCollapsed;
+          setFilesCollapsed(next);
+          if (next === false) {
+            setFilesSectionExpanded(true); // 展开时触发加载
+          }
+        }}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setFilesCollapsed(!filesCollapsed); } }}
+      >
+        <motion.span
+          animate={{ rotate: filesCollapsed ? 0 : 90 }}
+          transition={{ duration: 0.15 }}
+          className={s.groupArrow}
+        >
+          <CaretRightOutlined />
+        </motion.span>
+        <span className={s.treeLabel}>{t('sidebar.files')}</span>
+      </div>
 
-          <AnimatePresence>
-            {!filesCollapsed && (
-              <motion.div
-                initial={{ height: 0, opacity: 0 }}
-                animate={{ height: 'auto', opacity: 1 }}
-                exit={{ height: 0, opacity: 0 }}
-                transition={{ duration: 0.15 }}
-                className={s.children}
-              >
-                {folderTree.map(node => renderFolderNode(node))}
-              </motion.div>
+      <AnimatePresence>
+        {!filesCollapsed && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.15 }}
+            className={s.children}
+          >
+            {folderTree ? (
+              folderTree.map(node => renderFolderNode(node))
+            ) : (
+              <div style={{ padding: '8px 12px', fontSize: 12, color: 'var(--text-secondary)', opacity: 0.6 }}>
+                {filesSectionExpanded ? t('common.loading', 'Loading...') : t('sidebar.clickToLoad', 'Click to load folders')}
+              </div>
             )}
-          </AnimatePresence>
-        </>
-      )}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

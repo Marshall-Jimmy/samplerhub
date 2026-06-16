@@ -5,10 +5,12 @@ import {
   SearchOutlined,
   StarOutlined,
   UnorderedListOutlined,
+  ClockCircleOutlined,
+  WarningOutlined,
 } from '@ant-design/icons';
 import s from '../../styles/components/empty-state.module.css';
 
-export type EmptyStateType = 'no-samples' | 'no-results' | 'no-favorites' | 'no-playlist';
+export type EmptyStateType = 'no-samples' | 'no-results' | 'no-favorites' | 'no-playlist' | 'no-recent' | 'error-state';
 
 interface EmptyStateProps {
   type?: EmptyStateType;
@@ -22,6 +24,8 @@ const iconMap: Record<EmptyStateType, React.ReactNode> = {
   'no-results': <SearchOutlined />,
   'no-favorites': <StarOutlined />,
   'no-playlist': <UnorderedListOutlined />,
+  'no-recent': <ClockCircleOutlined />,
+  'error-state': <WarningOutlined />,
 };
 
 const titleKeyMap: Record<EmptyStateType, string> = {
@@ -29,6 +33,8 @@ const titleKeyMap: Record<EmptyStateType, string> = {
   'no-results': 'empty.noResults.title',
   'no-favorites': 'empty.noFavorites.title',
   'no-playlist': 'empty.noPlaylist.title',
+  'no-recent': 'empty.noRecent.title',
+  'error-state': 'empty.errorState.title',
 };
 
 const descKeyMap: Record<EmptyStateType, string> = {
@@ -36,6 +42,8 @@ const descKeyMap: Record<EmptyStateType, string> = {
   'no-results': 'empty.noResults.description',
   'no-favorites': 'empty.noFavorites.description',
   'no-playlist': 'empty.noPlaylist.description',
+  'no-recent': 'empty.noRecent.description',
+  'error-state': 'empty.errorState.description',
 };
 
 const EmptyState: React.FC<EmptyStateProps> = ({ type = 'no-samples', title, description, action }) => {

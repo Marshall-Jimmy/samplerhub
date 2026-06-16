@@ -15,12 +15,23 @@
   "files": [
     "dist-electron",
     "dist",
-    "package.json"
+    "package.json",
+    "drizzle/migrations"
   ],
   "extraResources": [
     {
       "from": "build/icon.png",
       "to": "icon.png"
+    },
+    {
+      "from": "apps/analyzer",
+      "to": "analyzer",
+      "filter": [
+        "main.py",
+        "requirements.txt",
+        "analyzer/**/*.py",
+        "analyzer/**/*.json"
+      ]
     }
   ],
   "electronDist": "electron-dist",
@@ -47,6 +58,7 @@
   },
   "win": {
     "icon": "build/icon.ico",
+    "signAndEditExecutable": false,
     "target": [
       {
         "target": "nsis",
@@ -73,5 +85,6 @@
   },
   "portable": {
     "artifactName": "${productName}_${version}_Portable.${ext}"
-  }
+  },
+  "publish": null
 }

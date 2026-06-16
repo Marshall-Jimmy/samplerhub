@@ -21,6 +21,18 @@ class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
     console.error('[ErrorBoundary]', error, errorInfo);
+    // 上报错误到主进程日志
+    try {
+      if (window.electronAPI?.send) {
+        window.electronAPI.send('error:report', {
+          source: 'ErrorBoundary',
+          message: error.message,
+          stack: error.stack,
+          componentStack: errorInfo.componentStack,
+          timestamp: new Date().toISOString(),
+        });
+      }
+    } catch { /* 上报失败不影响用户体验 */ }
   }
 
   handleReload = () => {

@@ -1,7 +1,7 @@
 import { useEffect, useCallback, useMemo } from 'react';
 import { usePlayerStore } from '../stores/playerStore';
 import { useLibraryStore } from '../stores/libraryStore';
-import { useSettingsStore, parseShortcut } from '../stores/settingsStore';
+import { useShortcutStore, parseShortcut } from '../stores/shortcutStore';
 
 export interface ShortcutMap {
   [key: string]: () => void;
@@ -9,7 +9,7 @@ export interface ShortcutMap {
 
 /**
  * 全局键盘快捷键 Hook
- * 支持用户自定义快捷键配置
+ * 支持用户自定义快捷键配置（从 shortcutStore 读取）
  */
 export function useKeyboardShortcuts(options?: {
   onToggleSearchPanel?: () => void;
@@ -20,13 +20,15 @@ export function useKeyboardShortcuts(options?: {
   onFocusSearch?: () => void;
   onEscape?: () => void;
   onSelectAll?: () => void;
+  onUndo?: () => void;
+  onRedo?: () => void;
 }) {
   const togglePlayPause = usePlayerStore(s => s.isPlaying ? s.pause : s.resume);
   const isPlaying = usePlayerStore(s => s.isPlaying);
   const resume = usePlayerStore(s => s.resume);
   const pause = usePlayerStore(s => s.pause);
   const clearSelection = useLibraryStore(s => s.clearSelection);
-  const shortcuts = useSettingsStore(s => s.shortcuts);
+  const shortcuts = useShortcutStore(s => s.shortcuts);
 
   // 预编译快捷键匹配器
   const matchers = useMemo(() => ({
@@ -100,6 +102,27 @@ export function useKeyboardShortcuts(options?: {
     if (matchers.escape(e)) {
       clearSelection();
       options?.onEscape?.();
+      return;
+    }
+
+    // Ctrl+Z / Cmd+Z: 撤销
+    if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+      e.preventDefault();
+      options?.onUndo?.();
+      return;
+    }
+
+    // Ctrl+Shift+Z / Cmd+Shift+Z: 重做
+    if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'z') {
+      e.preventDefault();
+      options?.onRedo?.();
+      return;
+    }
+
+    // Ctrl+Y / Cmd+Y: 重做（备选）
+    if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
+      e.preventDefault();
+      options?.onRedo?.();
       return;
     }
   }, [isPlaying, pause, resume, clearSelection, options, matchers]);

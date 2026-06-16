@@ -7,8 +7,8 @@ import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
 
-let Database: any;
-let dbLoadError: string = '';
+var Database: any;
+var dbLoadError: string = '';
 try {
   Database = require('better-sqlite3');
 } catch (err) {
@@ -16,8 +16,10 @@ try {
   console.warn('better-sqlite3 not available:', dbLoadError);
 }
 
-let db: ReturnType<typeof drizzle> | null = null;
-let sqlite: any = null;
+var db: ReturnType<typeof drizzle> | null = null;
+var sqlite: any = null;
+
+var isDatabaseInitialized = false;
 
 export function getDatabase() {
   if (!db) {
@@ -27,10 +29,20 @@ export function getDatabase() {
     const dbPath = path.join(app.getPath('userData'), 'samplerhub.db');
     sqlite = new Database(dbPath);
     sqlite.pragma('journal_mode = WAL');
+    sqlite.pragma('synchronous = NORMAL');
     sqlite.pragma('foreign_keys = ON');
     db = drizzle(sqlite, { schema });
   }
   return db;
+}
+
+/**
+ * 重置数据库连接（用于备份恢复后）
+ */
+export function resetDatabaseConnection() {
+  try { sqlite?.close() } catch {}
+  db = null;
+  sqlite = null;
 }
 
 export function getSqlite() {
@@ -73,7 +85,7 @@ export function backupDatabase(): string {
 }
 
 /** 启动定时备份（每 24 小时） */
-let backupTimer: ReturnType<typeof setInterval> | null = null;
+var backupTimer: ReturnType<typeof setInterval> | null = null;
 
 export function startAutoBackup(): void {
   // 首次启动延迟 5 分钟备份，避免影响启动性能
@@ -104,10 +116,51 @@ export function stopAutoBackup(): void {
   }
 }
 
-export function initDatabase(): void {
-  const d = getDatabase();
-  const s = getSqlite();
+// 数据库 schema 版本，每次新增迁移时递增
+const DB_SCHEMA_VERSION = 2;
 
+function getDbVersion(s: any): number {
+  try {
+    return s.prepare('PRAGMA user_version').pluck().get() as number;
+  } catch { return 0; }
+}
+
+function setDbVersion(s: any, v: number): void {
+  s.prepare(`PRAGMA user_version = ${v}`).run();
+}
+
+export async function initDatabase(): Promise<void> {
+  if (isDatabaseInitialized) return;
+  isDatabaseInitialized = true;
+
+  // 先确保数据库连接已创建
+  getDatabase();
+  const s = getSqlite();
+  const startTime = Date.now();
+  let stepStart = startTime;
+
+  // --- a. 快速路径：检查 schema 版本，已初始化则跳过重型操作 ---
+  const currentVersion = getDbVersion(s);
+  if (currentVersion >= DB_SCHEMA_VERSION) {
+    console.log(`[DB] Schema v${currentVersion} already up to date, skipping init`);
+    return;
+  }
+  console.log(`[DB] Schema upgrade: v${currentVersion} -> v${DB_SCHEMA_VERSION}`);
+
+  // --- a2. 增量迁移：只执行版本间差异，不重跑全量初始化 ---
+  if (currentVersion >= 1 && currentVersion < 2) {
+    stepStart = Date.now();
+    console.log('[DB] Applying v1->v2 incremental migrations...');
+    // v2: 添加排序索引
+    try { s.exec(`CREATE INDEX IF NOT EXISTS idx_samples_created_at ON samples(created_at)`); } catch {}
+    try { s.exec(`CREATE INDEX IF NOT EXISTS idx_samples_file_name ON samples(file_name)`); } catch {}
+    setDbVersion(s, 2);
+    console.log(`[DB] v1->v2 migrations completed in ${Date.now() - stepStart}ms`);
+    return;
+  }
+
+  // --- b. Tables + indexes + categories + rules creation ---
+  stepStart = Date.now();
   s.exec(`
     CREATE TABLE IF NOT EXISTS watched_folders (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -146,7 +199,17 @@ export function initDatabase(): void {
       is_favorite INTEGER DEFAULT 0,
       play_count INTEGER DEFAULT 0,
       last_played_at INTEGER,
-      indexed_at INTEGER NOT NULL DEFAULT (unixepoch())
+      indexed_at INTEGER NOT NULL DEFAULT (unixepoch()),
+      file_type TEXT NOT NULL DEFAULT 'audio',
+      midi_track_count INTEGER,
+      midi_note_count INTEGER,
+      midi_instruments TEXT,
+      midi_time_signature TEXT,
+      tags TEXT,
+      feature_vector TEXT,
+      rating INTEGER,
+      notes TEXT,
+      clap_embedding TEXT
     );
 
     CREATE TABLE IF NOT EXISTS tags (
@@ -197,26 +260,100 @@ export function initDatabase(): void {
       UNIQUE(playlist_id, sample_id)
     );
 
+    -- 父分类（分组）
     INSERT OR IGNORE INTO categories (id, name, is_system, sort_order) VALUES
-      (1, 'Kick', 1, 1),
-      (2, 'Snare', 1, 2),
-      (3, 'Clap', 1, 3),
-      (4, 'Hi-Hat', 1, 4),
-      (5, 'Open Hat', 1, 5),
-      (6, '808 Bass', 1, 6),
-      (7, 'Percussion', 1, 7),
-      (8, 'Rim', 1, 8),
-      (9, 'Bass', 1, 9),
-      (10, 'Synth', 1, 10),
-      (11, 'Vocal', 1, 11),
-      (12, 'FX', 1, 12),
-      (13, 'Drum Loop', 1, 13),
-      (14, 'Top Loop', 1, 14),
-      (15, 'Shaker', 1, 15),
-      (16, 'Pad', 1, 16),
-      (17, 'Loop', 1, 17),
-      (18, 'One Shot', 1, 18),
-      (19, 'Uncategorized', 1, 99);
+      (100, 'Drums', 1, 1),
+      (101, 'Bass', 1, 2),
+      (102, 'Synths', 1, 3),
+      (103, 'Instruments', 1, 4),
+      (104, 'Loops', 1, 5),
+      (105, 'Vocal & FX', 1, 6),
+      (106, 'Uncategorized', 1, 99);
+
+    -- Drums 子分类
+    INSERT OR IGNORE INTO categories (id, name, parent_id, is_system, sort_order) VALUES
+      (1, 'Kick', 100, 1, 1),
+      (2, 'Snare', 100, 1, 2),
+      (3, 'Clap', 100, 1, 3),
+      (4, 'Hi-Hat', 100, 1, 4),
+      (5, 'Open Hat', 100, 1, 5),
+      (7, 'Percussion', 100, 1, 6),
+      (8, 'Rim', 100, 1, 7),
+      (15, 'Shaker', 100, 1, 8),
+      (20, 'Tom', 100, 1, 9),
+      (21, 'Cymbal', 100, 1, 10),
+      (22, 'Crash', 100, 1, 11),
+      (23, 'Ride', 100, 1, 12);
+
+    -- Bass 子分类
+    INSERT OR IGNORE INTO categories (id, name, parent_id, is_system, sort_order) VALUES
+      (6, '808 Bass', 101, 1, 1),
+      (9, 'Sub Bass', 101, 1, 2),
+      (24, 'Acoustic Bass', 101, 1, 3);
+
+    -- Synths 子分类
+    INSERT OR IGNORE INTO categories (id, name, parent_id, is_system, sort_order) VALUES
+      (10, 'Synth Lead', 102, 1, 1),
+      (16, 'Pad', 102, 1, 2),
+      (25, 'Pluck', 102, 1, 3),
+      (26, 'Arp', 102, 1, 4),
+      (27, 'Chord', 102, 1, 5),
+      (28, 'Stab', 102, 1, 6);
+
+    -- Instruments 子分类（钢琴、吉他、弦乐等）
+    INSERT OR IGNORE INTO categories (id, name, parent_id, is_system, sort_order) VALUES
+      (30, 'Piano', 103, 1, 1),
+      (31, 'Guitar', 103, 1, 2),
+      (32, 'Electric Guitar', 103, 1, 3),
+      (33, 'Bass Guitar', 103, 1, 4),
+      (34, 'Violin', 103, 1, 5),
+      (35, 'Cello', 103, 1, 6),
+      (36, 'Strings', 103, 1, 7),
+      (37, 'Brass', 103, 1, 8),
+      (38, 'Woodwind', 103, 1, 9),
+      (39, 'Organ', 103, 1, 10),
+      (40, 'Flute', 103, 1, 11),
+      (41, 'Saxophone', 103, 1, 12);
+
+    -- Loops 子分类
+    INSERT OR IGNORE INTO categories (id, name, parent_id, is_system, sort_order) VALUES
+      (13, 'Drum Loop', 104, 1, 1),
+      (14, 'Top Loop', 104, 1, 2),
+      (17, 'Loop', 104, 1, 3),
+      (42, 'Instrument Loop', 104, 1, 4),
+      (43, 'Vocal Loop', 104, 1, 5);
+
+    -- Vocal & FX 子分类
+    INSERT OR IGNORE INTO categories (id, name, parent_id, is_system, sort_order) VALUES
+      (11, 'Vocal', 105, 1, 1),
+      (44, 'Vocal Chop', 105, 1, 2),
+      (12, 'FX', 105, 1, 3),
+      (45, 'Riser', 105, 1, 4),
+      (46, 'Impact', 105, 1, 5),
+      (47, 'Sweep', 105, 1, 6),
+      (48, 'Transition', 105, 1, 7),
+      (18, 'One Shot', 105, 1, 8);
+
+    -- 强制修复已有记录的 parent_id 和 name（兼容旧数据库升级）
+    UPDATE categories SET parent_id = 100, name = 'Kick' WHERE id = 1;
+    UPDATE categories SET parent_id = 100, name = 'Snare' WHERE id = 2;
+    UPDATE categories SET parent_id = 100, name = 'Clap' WHERE id = 3;
+    UPDATE categories SET parent_id = 100, name = 'Hi-Hat' WHERE id = 4;
+    UPDATE categories SET parent_id = 100, name = 'Open Hat' WHERE id = 5;
+    UPDATE categories SET parent_id = 101, name = '808 Bass' WHERE id = 6;
+    UPDATE categories SET parent_id = 100, name = 'Percussion' WHERE id = 7;
+    UPDATE categories SET parent_id = 100, name = 'Rim' WHERE id = 8;
+    UPDATE categories SET parent_id = 101, name = 'Sub Bass' WHERE id = 9;
+    UPDATE categories SET parent_id = 102, name = 'Synth Lead' WHERE id = 10;
+    UPDATE categories SET parent_id = 105, name = 'Vocal' WHERE id = 11;
+    UPDATE categories SET parent_id = 105, name = 'FX' WHERE id = 12;
+    UPDATE categories SET parent_id = 104, name = 'Drum Loop' WHERE id = 13;
+    UPDATE categories SET parent_id = 104, name = 'Top Loop' WHERE id = 14;
+    UPDATE categories SET parent_id = 100, name = 'Shaker' WHERE id = 15;
+    UPDATE categories SET parent_id = 102, name = 'Pad' WHERE id = 16;
+    UPDATE categories SET parent_id = 104, name = 'Loop' WHERE id = 17;
+    UPDATE categories SET parent_id = 105, name = 'One Shot' WHERE id = 18;
+    -- 旧 Uncategorized(19) 已不存在，样本会被数据修复逻辑迁移到 106
 
     INSERT OR IGNORE INTO classification_rules (name, pattern, rule_type, target_category_id, priority, is_active) VALUES
       -- 808 必须在 Bass 之前匹配，避免 808 被归入普通 Bass
@@ -277,18 +414,37 @@ export function initDatabase(): void {
       ('Loop - folder', 'loops', 'folder', 17, 60, 1),
       -- One Shot
       ('One Shot - keyword', 'one shot|oneshot|one_shot', 'keyword', 18, 70, 1),
-      ('One Shot - folder', 'one shots|oneshot', 'folder', 18, 70, 1);
-
-    -- FTS5 全文搜索虚拟表
-    CREATE VIRTUAL TABLE IF NOT EXISTS samples_fts USING fts5(
-      file_name,
-      tags,
-      category_name,
-      content='samples',
-      content_rowid='id'
-    );
-
-    -- FTS 同步触发器已移除，改为扫描后批量重建
+      ('One Shot - folder', 'one shots|oneshot', 'folder', 18, 70, 1),
+      -- Instruments
+      ('Piano - keyword', 'piano|keys|key|rhodes|epiano|electric piano', 'keyword', 30, 130, 1),
+      ('Piano - folder', 'piano|keys|rhodes', 'folder', 30, 130, 1),
+      ('Guitar - keyword', 'guitar|gtr|acoustic guitar|ac gtr', 'keyword', 31, 130, 1),
+      ('Guitar - folder', 'guitar|gtr|acoustic', 'folder', 31, 130, 1),
+      ('Electric Guitar - keyword', 'electric guitar|el gtr|distorted guitar|clean guitar|overdriven', 'keyword', 32, 130, 1),
+      ('Electric Guitar - folder', 'electric guitar|el gtr|distorted', 'folder', 32, 130, 1),
+      ('Violin - keyword', 'violin|fiddle|viola', 'keyword', 34, 130, 1),
+      ('Violin - folder', 'violin|strings|viola', 'folder', 34, 130, 1),
+      ('Strings - keyword', 'strings|string|ensemble|orchestra|orchestral', 'keyword', 36, 120, 1),
+      ('Strings - folder', 'strings|orchestral|ensemble', 'folder', 36, 120, 1),
+      ('Brass - keyword', 'brass|trumpet|trombone|horn|tuba', 'keyword', 37, 130, 1),
+      ('Brass - folder', 'brass|trumpet|trombone', 'folder', 37, 130, 1),
+      ('Flute - keyword', 'flute|flutes|recorder', 'keyword', 40, 130, 1),
+      ('Flute - folder', 'flute', 'folder', 40, 130, 1),
+      ('Saxophone - keyword', 'sax|saxophone|saxs', 'keyword', 41, 130, 1),
+      ('Saxophone - folder', 'sax|saxophone', 'folder', 41, 130, 1),
+      ('Organ - keyword', 'organ|hammond|b3|church organ', 'keyword', 39, 130, 1),
+      ('Organ - folder', 'organ|hammond', 'folder', 39, 130, 1),
+      -- FX subtypes
+      ('Riser - keyword', 'riser|risers|rise|build|buildup|build up', 'keyword', 45, 140, 1),
+      ('Riser - folder', 'risers|buildups|build ups', 'folder', 45, 140, 1),
+      ('Impact - keyword', 'impact|impacts|boom|hit|bang|downer', 'keyword', 46, 140, 1),
+      ('Impact - folder', 'impacts|booms|hits', 'folder', 46, 140, 1),
+      ('Sweep - keyword', 'sweep|sweeps|whoosh|wind', 'keyword', 47, 130, 1),
+      ('Sweep - folder', 'sweeps|whooshes', 'folder', 47, 130, 1),
+      ('Transition - keyword', 'transition|transitions|fill|fills', 'keyword', 48, 120, 1),
+      ('Transition - folder', 'transitions|fills', 'folder', 48, 120, 1),
+      ('Vocal Chop - keyword', 'vocal chop|vox chop|vocal slice', 'keyword', 44, 140, 1),
+      ('Vocal Chop - folder', 'vocal chops|vox chops', 'folder', 44, 140, 1);
 
     -- 智能文件夹：保存搜索条件为动态虚拟文件夹
     CREATE TABLE IF NOT EXISTS smart_folders (
@@ -328,48 +484,289 @@ export function initDatabase(): void {
     CREATE INDEX IF NOT EXISTS idx_samples_duration ON samples(duration);
     CREATE INDEX IF NOT EXISTS idx_samples_category_favorite ON samples(category_id, is_favorite);
     CREATE INDEX IF NOT EXISTS idx_samples_modified_at ON samples(modified_at);
+
+    -- 高性能复合索引：覆盖常用搜索组合
+    CREATE INDEX IF NOT EXISTS idx_samples_search_combo ON samples(category_id, bpm, key, is_favorite, duration);
+    CREATE INDEX IF NOT EXISTS idx_samples_clap ON samples(clap_embedding) WHERE clap_embedding IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS idx_samples_feature ON samples(feature_vector) WHERE feature_vector IS NOT NULL;
+
+    -- 排序索引：created_at 用于默认按日期排序
+    CREATE INDEX IF NOT EXISTS idx_samples_created_at ON samples(created_at);
+
+    -- UCS 游戏音效分类体系（兜底创建，确保迁移失败时也能工作）
+    CREATE TABLE IF NOT EXISTS ucs_categories (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      cat_code TEXT NOT NULL UNIQUE,
+      cat_name_zh TEXT NOT NULL,
+      cat_name_en TEXT NOT NULL,
+      clap_description TEXT NOT NULL,
+      parent_id INTEGER,
+      sort_order INTEGER DEFAULT 0
+    );
+    CREATE TABLE IF NOT EXISTS ucs_subcategories (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      cat_id INTEGER NOT NULL REFERENCES ucs_categories(id),
+      code TEXT NOT NULL UNIQUE,
+      name_zh TEXT NOT NULL,
+      name_en TEXT NOT NULL,
+      clap_description TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS sample_ucs_tags (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      sample_id INTEGER NOT NULL REFERENCES samples(id) ON DELETE CASCADE,
+      ucs_cat_id INTEGER,
+      ucs_sub_id INTEGER,
+      confidence REAL DEFAULT 0,
+      is_confirmed INTEGER DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS game_metadata (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      sample_id INTEGER NOT NULL REFERENCES samples(id) ON DELETE CASCADE UNIQUE,
+      lufs_integrated REAL,
+      is_loop INTEGER,
+      loop_begin_sample INTEGER,
+      loop_end_sample INTEGER,
+      dc_offset REAL,
+      leading_silence_sec REAL,
+      trailing_silence_sec REAL,
+      bit_depth INTEGER,
+      suggest_mono INTEGER,
+      suggest_resample INTEGER,
+      analyzed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS migrations (
+      name TEXT PRIMARY KEY,
+      applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_sample_ucs_sample ON sample_ucs_tags(sample_id);
+    CREATE INDEX IF NOT EXISTS idx_sample_ucs_cat ON sample_ucs_tags(ucs_cat_id);
+    CREATE INDEX IF NOT EXISTS idx_game_metadata_sample ON game_metadata(sample_id);
+
+    -- 样本-分类多对多关联（支持一个样本属于多个分类）
+    CREATE TABLE IF NOT EXISTS sample_categories (
+      sample_id INTEGER NOT NULL REFERENCES samples(id) ON DELETE CASCADE,
+      category_id INTEGER NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
+      is_primary INTEGER DEFAULT 0,
+      PRIMARY KEY (sample_id, category_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_sample_categories_sample ON sample_categories(sample_id);
+    CREATE INDEX IF NOT EXISTS idx_sample_categories_cat ON sample_categories(category_id);
   `);
+  console.log(`[DB] Step b (tables+indexes+categories+rules) took ${Date.now() - stepStart}ms`);
 
-  // 迁移：添加 is_corrupted 列（如果不存在）
+  // --- c. FTS5 virtual table creation (separate to identify bottleneck) ---
+  stepStart = Date.now();
+  const fts5Exists = s.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='samples_fts'").get();
+  if (!fts5Exists) {
+    s.exec(`
+      CREATE VIRTUAL TABLE samples_fts USING fts5(
+        file_name,
+        tags,
+        content='samples',
+        content_rowid='id'
+      );
+    `);
+    console.log(`[DB] FTS5 virtual table created`);
+  } else {
+    console.log(`[DB] FTS5 virtual table already exists, skipped`);
+  }
+  console.log(`[DB] Step c (FTS5) took ${Date.now() - stepStart}ms`);
+
+  // --- d. Column migrations (loop through ALTER TABLEs) ---
+  stepStart = Date.now();
+  const columnMigrations = [
+    { col: 'is_corrupted', sql: `ALTER TABLE samples ADD COLUMN is_corrupted INTEGER DEFAULT 0` },
+    { col: 'file_type', sql: `ALTER TABLE samples ADD COLUMN file_type TEXT NOT NULL DEFAULT 'audio'` },
+    { col: 'midi_track_count', sql: `ALTER TABLE samples ADD COLUMN midi_track_count INTEGER` },
+    { col: 'midi_note_count', sql: `ALTER TABLE samples ADD COLUMN midi_note_count INTEGER` },
+    { col: 'midi_instruments', sql: `ALTER TABLE samples ADD COLUMN midi_instruments TEXT` },
+    { col: 'midi_time_signature', sql: `ALTER TABLE samples ADD COLUMN midi_time_signature TEXT` },
+    { col: 'tags', sql: `ALTER TABLE samples ADD COLUMN tags TEXT` },
+    { col: 'feature_vector', sql: `ALTER TABLE samples ADD COLUMN feature_vector TEXT` },
+    { col: 'rating', sql: `ALTER TABLE samples ADD COLUMN rating INTEGER` },
+    { col: 'notes', sql: `ALTER TABLE samples ADD COLUMN notes TEXT` },
+    { col: 'clap_embedding', sql: `ALTER TABLE samples ADD COLUMN clap_embedding TEXT` },
+    { col: 'text_embedding', sql: `ALTER TABLE samples ADD COLUMN text_embedding BLOB` },
+  ];
+  for (const { col, sql } of columnMigrations) {
+    try {
+      s.exec(sql);
+    } catch {
+      // 列已存在，忽略
+    }
+  }
+  console.log(`[DB] Step d (column migrations) took ${Date.now() - stepStart}ms`);
+
+  // --- e. Conditional data fixes (check before UPDATE) ---
+  stepStart = Date.now();
+  // 迁移：将已有的 MIDI 文件标记为 midi 类型（条件执行）
   try {
-    s.exec(`ALTER TABLE samples ADD COLUMN is_corrupted INTEGER DEFAULT 0`);
-  } catch {
-    // 列已存在，忽略
+    const midiCount = s.prepare(`SELECT COUNT(*) as cnt FROM samples WHERE file_type = 'audio' AND (file_name LIKE '%.mid' OR file_name LIKE '%.midi')`).get() as { cnt: number };
+    if (midiCount && midiCount.cnt > 0) {
+      s.exec(`UPDATE samples SET file_type = 'midi' WHERE file_type = 'audio' AND (file_name LIKE '%.mid' OR file_name LIKE '%.midi')`);
+      console.log(`[DB] Fixed ${midiCount.cnt} MIDI file type(s)`);
+    }
+  } catch {}
+  console.log(`[DB] Step e (conditional data fixes) took ${Date.now() - stepStart}ms`);
+
+  // --- f. SQL file migrations (keep existing logic) ---
+  stepStart = Date.now();
+  try {
+    const { fileURLToPath } = await import('node:url');
+    const _selfPath = fileURLToPath(import.meta.url);
+    const appRoot = process.env.APP_ROOT || path.join(path.dirname(_selfPath), '../..');
+    const migrationsDir = path.join(appRoot, 'drizzle', 'migrations');
+    console.log(`[DB] Migrations dir: ${migrationsDir}, exists: ${fs.existsSync(migrationsDir)}`);
+
+    if (fs.existsSync(migrationsDir)) {
+      const migrationFiles = fs.readdirSync(migrationsDir)
+        .filter(f => f.endsWith('.sql'))
+        .sort();
+
+      for (const file of migrationFiles) {
+        try {
+          const applied = s.prepare(
+            'SELECT 1 FROM migrations WHERE name = ?'
+          ).get(file);
+
+          if (applied) continue;
+
+          console.log(`[DB] Applying migration: ${file}`);
+          const sql = fs.readFileSync(path.join(migrationsDir, file), 'utf-8');
+          s.exec(sql);
+          s.prepare('INSERT OR IGNORE INTO migrations (name) VALUES (?)').run(file);
+          console.log(`[DB] Migration ${file} applied successfully`);
+        } catch (migrationErr) {
+          console.error(`[DB] Migration ${file} failed:`, migrationErr);
+        }
+      }
+    } else {
+      console.warn(`[DB] Migrations directory not found: ${migrationsDir}`);
+    }
+  } catch (err) {
+    console.error('[DB] Migration error:', err);
+  }
+  console.log(`[DB] Step f (SQL file migrations) took ${Date.now() - stepStart}ms`);
+
+  // --- g. Auxiliary tables (analysis_sessions, audio_segments, etc.) ---
+  stepStart = Date.now();
+  try {
+    s.exec(`
+      CREATE TABLE IF NOT EXISTS analysis_sessions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        config TEXT NOT NULL,
+        total_files INTEGER NOT NULL DEFAULT 0,
+        completed_files INTEGER NOT NULL DEFAULT 0,
+        failed_files INTEGER NOT NULL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'pending',
+        estimated_time_ms INTEGER,
+        elapsed_time_ms INTEGER NOT NULL DEFAULT 0,
+        started_at INTEGER,
+        completed_at INTEGER,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      )
+    `);
+  } catch {}
+  try {
+    s.exec(`
+      CREATE TABLE IF NOT EXISTS analysis_queue (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id INTEGER NOT NULL REFERENCES analysis_sessions(id) ON DELETE CASCADE,
+        sample_id INTEGER NOT NULL REFERENCES samples(id) ON DELETE CASCADE,
+        task_type TEXT NOT NULL DEFAULT 'full',
+        status TEXT NOT NULL DEFAULT 'pending',
+        error_message TEXT,
+        started_at INTEGER,
+        completed_at INTEGER,
+        duration_ms INTEGER,
+        created_at INTEGER NOT NULL
+      )
+    `);
+  } catch {}
+  try {
+    s.exec(`CREATE INDEX IF NOT EXISTS idx_analysis_queue_session ON analysis_queue(session_id, status)`);
+  } catch {}
+  try {
+    s.exec(`
+      CREATE TABLE IF NOT EXISTS audio_segments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        sample_id INTEGER NOT NULL REFERENCES samples(id) ON DELETE CASCADE,
+        label TEXT NOT NULL,
+        display_label TEXT,
+        start_time REAL NOT NULL,
+        end_time REAL NOT NULL,
+        peak_prob REAL NOT NULL,
+        created_at INTEGER NOT NULL
+      )
+    `);
+  } catch {}
+  try {
+    s.exec(`CREATE INDEX IF NOT EXISTS idx_audio_segments_sample ON audio_segments(sample_id)`);
+  } catch {}
+  try {
+    s.exec(`CREATE INDEX IF NOT EXISTS idx_samples_tags ON samples(tags)`);
+  } catch {}
+  console.log(`[DB] Step g (auxiliary tables) took ${Date.now() - stepStart}ms`);
+
+  // --- h. 数据修复：将旧的 category_id 映射到新的层级体系（条件执行） ---
+  stepStart = Date.now();
+  try {
+    const oldUncategorized = s.prepare('SELECT COUNT(*) as cnt FROM samples WHERE category_id = 19').get() as { cnt: number };
+    if (oldUncategorized && oldUncategorized.cnt > 0) {
+      const fixResult = s.prepare('UPDATE samples SET category_id = 106 WHERE category_id = 19').run();
+      console.log(`[DB] Fixed ${fixResult.changes} samples from old Uncategorized(19) to new(106)`);
+    }
+  } catch (fixErr) {
+    console.error('[DB] Data fix error:', fixErr);
+  }
+  console.log(`[DB] Step h (data fixes) took ${Date.now() - stepStart}ms`);
+
+  // --- i. 标记 schema 已初始化完成 ---
+  setDbVersion(s, DB_SCHEMA_VERSION);
+  console.log(`[DB] Init completed in ${Date.now() - startTime}ms`);
+}
+
+/**
+ * 重置数据库：删除数据库文件并重新初始化
+ * 警告：这会删除所有数据！调用前必须确认用户已备份
+ */
+export function resetDatabase(): void {
+  // 关闭现有连接
+  if (sqlite) {
+    try { sqlite.close(); } catch {}
+    sqlite = null;
+    db = null;
   }
 
-  // 迁移：添加 file_type 列（区分音频/MIDI）
-  try {
-    s.exec(`ALTER TABLE samples ADD COLUMN file_type TEXT NOT NULL DEFAULT 'audio'`);
-  } catch {
-    // 列已存在，忽略
-  }
+  const dbPath = getDbPath();
+  const walPath = dbPath + '-wal';
+  const shmPath = dbPath + '-shm';
 
-  // 迁移：添加 MIDI 专属字段
-  try {
-    s.exec(`ALTER TABLE samples ADD COLUMN midi_track_count INTEGER`);
-  } catch {}
-  try {
-    s.exec(`ALTER TABLE samples ADD COLUMN midi_note_count INTEGER`);
-  } catch {}
-  try {
-    s.exec(`ALTER TABLE samples ADD COLUMN midi_instruments TEXT`);
-  } catch {}
-  try {
-    s.exec(`ALTER TABLE samples ADD COLUMN midi_time_signature TEXT`);
-  } catch {}
+  // 删除数据库文件
+  try { fs.unlinkSync(dbPath); } catch {}
+  try { fs.unlinkSync(walPath); } catch {}
+  try { fs.unlinkSync(shmPath); } catch {}
 
-  // 迁移：将已有的 MIDI 文件标记为 midi 类型
-  try {
-    s.exec(`UPDATE samples SET file_type = 'midi' WHERE file_name LIKE '%.mid' OR file_name LIKE '%.midi'`);
-  } catch {}
+  // 重置初始化标志，否则 initDatabase() 会直接返回
+  isDatabaseInitialized = false;
+
+  // 重新初始化
+  initDatabase();
 }
 
 /** 批量重建 FTS5 索引（扫描完成后调用，替代逐行触发器） */
 export function rebuildFtsIndex(): void {
-  const s = getSqlite();
-  const start = Date.now();
-  s.exec(`
-    INSERT INTO samples_fts(samples_fts) VALUES ('rebuild');
-  `);
-  console.log(`[Perf] FTS rebuild took ${Date.now() - start}ms`);
+  try {
+    const s = getSqlite();
+    const start = Date.now();
+    s.exec(`
+      INSERT INTO samples_fts(samples_fts) VALUES ('rebuild');
+    `);
+    console.log(`[Perf] FTS rebuild took ${Date.now() - start}ms`);
+  } catch (err) {
+    console.error('[FTS] Rebuild failed:', err);
+  }
 }

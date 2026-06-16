@@ -6,6 +6,7 @@
 import { readFile } from 'fs/promises';
 import { extname } from 'path';
 import { MIDI_EXTENSIONS } from '../../../shared/constants/audioFormats';
+import { getFileIOService } from './fileIOService';
 
 export interface MidiMetadata {
   duration: number;
@@ -28,11 +29,19 @@ export function isMidiFile(filePath: string): boolean {
 
 /**
  * 解析 MIDI 文件元数据
+ * @param input 文件路径或 Buffer
  */
-export async function parseMidiFile(filePath: string): Promise<MidiMetadata> {
+export async function parseMidiFile(input: string | Buffer): Promise<MidiMetadata> {
   try {
     const { Midi } = await import('@tonejs/midi');
-    const buffer = await readFile(filePath);
+
+    let buffer: Buffer;
+    if (typeof input === 'string') {
+      buffer = await getFileIOService().readFile(input);
+    } else {
+      buffer = input;
+    }
+
     const midi = new Midi(buffer);
 
     // 提取 BPM（取第一个有效 BPM）
@@ -79,7 +88,7 @@ export async function parseMidiFile(filePath: string): Promise<MidiMetadata> {
       fileType: 'midi',
     };
   } catch (error) {
-    console.warn(`[MidiParser] Failed to parse: ${filePath}`, error);
+    console.warn(`[MidiParser] Failed to parse: ${typeof input === 'string' ? input : '(buffer)'}`, error);
     return {
       duration: 0,
       bpm: null,

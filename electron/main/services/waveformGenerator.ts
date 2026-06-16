@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { app } from 'electron';
+import { getFileIOService } from './fileIOService';
 
 const WAVEFORM_SAMPLES = 200;
 
@@ -156,6 +157,187 @@ export function extractWavWaveform(buffer: Buffer): { waveform: number[]; peaks:
 }
 
 /**
+ * WAV 流式波形提取 — 只读取文件头 + PCM data chunk，避免加载整个文件
+ * 对于 50MB 的 WAV 文件，只读取几百 KB 的数据
+ */
+function extractWavWaveformStreaming(filePath: string): { waveform: number[]; peaks: { min: number; max: number }[] } | null {
+  try {
+    const fd = fs.openSync(filePath, 'r');
+    try {
+      // 读取 RIFF 头（12 字节）
+      const header = Buffer.alloc(12);
+      fs.readSync(fd, header, 0, 12, 0);
+      const riff = header.toString('ascii', 0, 4);
+      if (riff !== 'RIFF') {
+        fs.closeSync(fd);
+        return null;
+      }
+
+      // 遍历 chunks 找到 data
+      let offset = 12;
+      const chunkHeader = Buffer.alloc(8);
+      while (true) {
+        fs.readSync(fd, chunkHeader, 0, 8, offset);
+        const chunkId = chunkHeader.toString('ascii', 0, 4);
+        const chunkSize = chunkHeader.readUInt32LE(4);
+
+        if (chunkId === 'data') {
+          const dataStart = offset + 8;
+          // 只读取前 10MB 的 PCM 数据用于波形生成（足够精确）
+          const maxRead = Math.min(chunkSize, 10 * 1024 * 1024);
+          const pcmBuffer = Buffer.alloc(maxRead);
+          const bytesRead = fs.readSync(fd, pcmBuffer, 0, maxRead, dataStart);
+
+          const sampleCount = Math.floor(bytesRead / 2);
+          const blockSize = Math.floor(sampleCount / WAVEFORM_SAMPLES);
+          if (blockSize === 0) return null;
+
+          const waveform: number[] = [];
+          for (let i = 0; i < WAVEFORM_SAMPLES; i++) {
+            let sum = 0;
+            const start = i * blockSize * 2;
+            for (let j = 0; j < blockSize && (start + j * 2 + 1) < bytesRead; j++) {
+              const sample = pcmBuffer.readInt16LE(start + j * 2);
+              sum += Math.abs(sample);
+            }
+            waveform.push(sum / blockSize / 32768);
+          }
+
+          const max = Math.max(...waveform);
+          if (max > 0) {
+            for (let i = 0; i < waveform.length; i++) {
+              waveform[i] = waveform[i] / max;
+            }
+          }
+
+          const peakBlockSize = Math.floor(sampleCount / PEAK_ENVELOPE_SAMPLES);
+          if (peakBlockSize === 0) return { waveform, peaks: [] };
+
+          const peaks: { min: number; max: number }[] = [];
+          for (let i = 0; i < PEAK_ENVELOPE_SAMPLES; i++) {
+            let min = Infinity;
+            let maxVal = -Infinity;
+            const start = i * peakBlockSize * 2;
+            for (let j = 0; j < peakBlockSize && (start + j * 2 + 1) < bytesRead; j++) {
+              const sample = pcmBuffer.readInt16LE(start + j * 2) / 32768;
+              if (sample < min) min = sample;
+              if (sample > maxVal) maxVal = sample;
+            }
+            peaks.push({ min, max: maxVal });
+          }
+
+          return { waveform, peaks };
+        }
+
+        offset += 8 + chunkSize;
+        if (chunkSize > 4 * 1024 * 1024 * 1024 || offset < 0) break; // 防止溢出
+      }
+    } finally {
+      fs.closeSync(fd);
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+/**
+ * AIFF 流式波形提取
+ */
+function extractAiffWaveformStreaming(filePath: string): { waveform: number[]; peaks: { min: number; max: number }[] } | null {
+  try {
+    const fd = fs.openSync(filePath, 'r');
+    try {
+      const header = Buffer.alloc(12);
+      fs.readSync(fd, header, 0, 12, 0);
+      const form = header.toString('ascii', 0, 4);
+      if (form !== 'FORM') return null;
+      const formType = header.toString('ascii', 8, 12);
+      if (formType !== 'AIFF' && formType !== 'AIFC') return null;
+
+      let offset = 12;
+      let numChannels = 1;
+      let sampleSize = 16;
+      let ssndOffset = -1;
+      let ssndSize = 0;
+
+      const chunkHeader = Buffer.alloc(8);
+      while (offset < 100 * 1024 * 1024) { // 只扫描前 100MB 的 chunk headers
+        fs.readSync(fd, chunkHeader, 0, 8, offset);
+        const chunkId = chunkHeader.toString('ascii', 0, 4);
+        const chunkSize = chunkHeader.readUInt32BE(4);
+
+        if (chunkId === 'COMM') {
+          const commData = Buffer.alloc(Math.min(chunkSize, 16));
+          fs.readSync(fd, commData, 0, commData.length, offset + 8);
+          numChannels = commData.readUInt16BE(0);
+          sampleSize = commData.readUInt16BE(6);
+        } else if (chunkId === 'SSND') {
+          ssndOffset = offset + 8;
+          ssndSize = chunkSize;
+          break;
+        }
+
+        offset += 8 + chunkSize;
+        if (chunkSize > 4 * 1024 * 1024 * 1024 || offset < 0) break;
+      }
+
+      if (ssndOffset < 0) return null;
+
+      // 读取 PCM 数据（最多 10MB）
+      const maxRead = Math.min(ssndSize, 10 * 1024 * 1024);
+      const pcmBuffer = Buffer.alloc(maxRead);
+      const bytesRead = fs.readSync(fd, pcmBuffer, 0, maxRead, ssndOffset);
+
+      const bytesPerSample = (sampleSize || 16) / 8;
+      const sampleCount = Math.floor(bytesRead / bytesPerSample);
+      const blockSize = Math.floor(sampleCount / WAVEFORM_SAMPLES);
+      if (blockSize === 0) return null;
+
+      const waveform: number[] = [];
+      for (let i = 0; i < WAVEFORM_SAMPLES; i++) {
+        let sum = 0;
+        const start = i * blockSize * bytesPerSample;
+        for (let j = 0; j < blockSize && (start + j * bytesPerSample + 1) < bytesRead; j++) {
+          const sample = pcmBuffer.readInt16BE(start + j * bytesPerSample);
+          sum += Math.abs(sample);
+        }
+        waveform.push(sum / blockSize / 32768);
+      }
+
+      const max = Math.max(...waveform);
+      if (max > 0) {
+        for (let i = 0; i < waveform.length; i++) {
+          waveform[i] = waveform[i] / max;
+        }
+      }
+
+      const peakBlockSize = Math.floor(sampleCount / PEAK_ENVELOPE_SAMPLES);
+      if (peakBlockSize === 0) return { waveform, peaks: [] };
+
+      const peaks: { min: number; max: number }[] = [];
+      for (let i = 0; i < PEAK_ENVELOPE_SAMPLES; i++) {
+        let min = Infinity;
+        let maxVal = -Infinity;
+        const start = i * peakBlockSize * bytesPerSample;
+        for (let j = 0; j < peakBlockSize && (start + j * bytesPerSample + 1) < bytesRead; j++) {
+          const sample = pcmBuffer.readInt16BE(start + j * bytesPerSample) / 32768;
+          if (sample < min) min = sample;
+          if (sample > maxVal) maxVal = sample;
+        }
+        peaks.push({ min, max: maxVal });
+      }
+
+      return { waveform, peaks };
+    } finally {
+      fs.closeSync(fd);
+    }
+  } catch {
+    return null;
+  }
+}
+
+/**
  * 从 AIFF 文件提取波形数据
  * AIFF 格式：FORM + AIFF + chunks (COMM, SSND 等)
  */
@@ -262,30 +444,45 @@ export function extractAiffWaveform(buffer: Buffer): { waveform: number[]; peaks
  * 从音频文件生成波形数据
  * 优先使用 WAV 直接解析，其他格式使用伪随机波形
  * 返回波形数据和峰值包络
+ * @param input 文件路径或 Buffer
  */
-export function generateWaveform(filePath: string): { waveform: number[]; peaks: { min: number; max: number }[] } | null {
+export async function generateWaveform(
+  input: string | Buffer
+): Promise<{ waveform: number[]; peaks: { min: number; max: number }[] } | null> {
   try {
-    if (!fs.existsSync(filePath)) return null;
+    let buffer: Buffer;
 
-    const stats = fs.statSync(filePath);
-    if (stats.size > 500 * 1024 * 1024) return null; // 超过500MB跳过
-    const fileBuffer = fs.readFileSync(filePath);
+    if (typeof input === 'string') {
+      if (!fs.existsSync(input)) return null;
+      const stats = fs.statSync(input);
+      if (stats.size > 500 * 1024 * 1024) return null; // 超过500MB跳过
+      buffer = await getFileIOService().readFile(input);
+    } else {
+      buffer = input;
+      if (buffer.length > 500 * 1024 * 1024) return null;
+    }
 
-    // WAV 文件：直接解析 PCM 数据
-    if (filePath.toLowerCase().endsWith('.wav')) {
-      const result = extractWavWaveform(fileBuffer);
+    const filePath = typeof input === 'string' ? input : '';
+
+    // WAV 文件：直接从 Buffer 解析
+    if (filePath.toLowerCase().endsWith('.wav') || (!filePath && buffer.length > 0)) {
+      const result = extractWavWaveform(buffer);
       if (result) return result;
     }
 
-    // AIFF 文件：解析 PCM 数据
+    // AIFF 文件：直接从 Buffer 解析
     if (filePath.toLowerCase().endsWith('.aiff') || filePath.toLowerCase().endsWith('.aif')) {
-      const result = extractAiffWaveform(fileBuffer);
+      const result = extractAiffWaveform(buffer);
       if (result) return result;
     }
 
-    // 其他格式：生成基于文件特征的伪随机波形
-    const waveform = generatePseudoWaveform(filePath);
-    const peaks = generatePseudoPeaks(filePath);
+    // 其他格式：生成基于文件特征的伪随机波形（不读文件内容）
+    const waveform = typeof input === 'string'
+      ? generatePseudoWaveform(input)
+      : generatePseudoWaveform('buffer');
+    const peaks = typeof input === 'string'
+      ? generatePseudoPeaks(input)
+      : generatePseudoPeaks('buffer');
     return { waveform, peaks };
   } catch {
     return null;
@@ -344,19 +541,27 @@ export function decodeWaveform(blob: Buffer): number[] {
  * 返回有效音频的起止时间（秒）
  * threshold: 振幅阈值，低于此值视为静默（0-1，默认0.01，即-40dB）
  * minSilenceFrames: 最少连续静默帧数才算有效空白（默认50帧）
+ * @param input 文件路径或 Buffer
  */
 export function detectSilence(
-  filePath: string,
+  input: string | Buffer,
   threshold: number = 0.01,
   minSilenceFrames: number = 50
 ): { startTime: number; endTime: number; duration: number } | null {
   try {
-    if (!fs.existsSync(filePath)) return null;
+    let buffer: Buffer;
 
-    const ext = filePath.toLowerCase();
-    const stats = fs.statSync(filePath);
-    if (stats.size > 500 * 1024 * 1024) return null; // 超过500MB跳过
-    const buffer = fs.readFileSync(filePath);
+    if (typeof input === 'string') {
+      if (!fs.existsSync(input)) return null;
+      const stats = fs.statSync(input);
+      if (stats.size > 500 * 1024 * 1024) return null;
+      buffer = fs.readFileSync(input);
+    } else {
+      buffer = input;
+      if (buffer.length > 500 * 1024 * 1024) return null;
+    }
+
+    const ext = typeof input === 'string' ? input.toLowerCase() : '';
 
     let pcmData: Buffer | null = null;
     let sampleRate = 44100;

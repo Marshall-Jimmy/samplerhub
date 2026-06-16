@@ -4,17 +4,53 @@ import { BrowserWindow } from 'electron';
 import { AUDIO_EXTENSIONS, MIDI_EXTENSIONS, ALL_SUPPORTED_EXTENSIONS } from '../../../shared/constants/audioFormats';
 import { IPC_CHANNELS } from '../../../shared/types/ipc.types';
 import { getDatabase } from './database';
-import { samples, watchedFolders, classificationRules } from '../../../drizzle/schema';
+import { samples, watchedFolders } from '../../../drizzle/schema';
 import { eq } from 'drizzle-orm';
-import { computeFileHash } from './fileScanner';
-import { parseAudioFile } from './audioParser';
-import { parseMidiFile, isMidiFile } from './midiParser';
-import { classifySample } from './classifier';
+import { computeFileHash, enqueueMetadataJob } from './fileScanner';
+import type { FileInfo } from './fileScanner';
 import { stat } from 'fs/promises';
 
-const watchers = new Map<string, chokidar.FSWatcher>();
+// 防抖延迟（毫秒）
+const DEBOUNCE_DELAY = 2000;
 
-async function handleFileAdd(filePath: string): Promise<void> {
+// 防抖队列：批量文件变更时合并处理，避免逐个触发 DB 写入
+const pendingAdds = new Set<string>();
+const pendingChanges = new Set<string>();
+const pendingRemoves = new Set<string>();
+var debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+// 文件监控器映射
+const watchers = new Map<string, any>();
+
+function flushPendingFiles(): void {
+  const adds = [...pendingAdds];
+  const changes = [...pendingChanges];
+  const removes = [...pendingRemoves];
+  pendingAdds.clear();
+  pendingChanges.clear();
+  pendingRemoves.clear();
+  debounceTimer = null;
+
+  // 串行处理，避免并发 DB 写入冲突
+  (async () => {
+    for (const filePath of removes) {
+      try { await handleFileRemove(filePath); } catch {}
+    }
+    for (const filePath of adds) {
+      try { await handleFileAdd(filePath); } catch {}
+    }
+    for (const filePath of changes) {
+      try { await handleFileChange(filePath); } catch {}
+    }
+  })();
+}
+
+function scheduleDebounced(): void {
+  if (debounceTimer) clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(flushPendingFiles, DEBOUNCE_DELAY);
+}
+
+export async function handleFileAdd(filePath: string): Promise<void> {
   const ext = extname(filePath).toLowerCase();
   if (!ALL_SUPPORTED_EXTENSIONS.has(ext)) return;
 
@@ -28,14 +64,13 @@ async function handleFileAdd(filePath: string): Promise<void> {
     const stats = await stat(filePath);
     const hash = computeFileHash(filePath, stats.size, stats.mtimeMs);
     const fileName = filePath.split(/[\\/]/).pop() || '';
-    const isMidi = isMidiFile(filePath);
 
     await db.insert(samples).values({
       filePath,
       fileName,
       fileSize: stats.size,
       fileHash: hash,
-      fileType: isMidi ? 'midi' : 'audio',
+      fileType: 'audio',
       createdAt: new Date(),
       modifiedAt: stats.mtime,
       duration: 0,
@@ -44,46 +79,15 @@ async function handleFileAdd(filePath: string): Promise<void> {
       channels: 0,
     });
 
-    if (isMidi) {
-      // 解析 MIDI 元数据
-      const midiMeta = await parseMidiFile(filePath);
-      if (midiMeta.duration > 0) {
-        await db.update(samples)
-          .set({
-            duration: midiMeta.duration,
-            bpm: midiMeta.bpm,
-            key: midiMeta.key,
-            isCorrupted: false,
-            midiTrackCount: midiMeta.trackCount,
-            midiNoteCount: midiMeta.noteCount,
-            midiInstruments: midiMeta.instruments.length ? JSON.stringify(midiMeta.instruments) : null,
-            midiTimeSignature: midiMeta.timeSignature,
-          })
-          .where(eq(samples.filePath, filePath));
-      }
-    } else {
-      // 解析音频元数据
-      const metadata = await parseAudioFile(filePath);
-      if (metadata.duration > 0) {
-        await db.update(samples)
-          .set({
-            duration: metadata.duration,
-            sampleRate: metadata.sampleRate,
-            bitRate: metadata.bitRate,
-            channels: metadata.channels,
-            bpm: metadata.bpm,
-            key: metadata.key,
-          })
-          .where(eq(samples.filePath, filePath));
-      }
-    }
-
-    // 自动分类
-    const rules = await db.select().from(classificationRules) as import('../../../shared/types/sample.types').ClassificationRule[];
-    const categoryId = classifySample(fileName, filePath, rules);
-    if (categoryId !== null) {
-      await db.update(samples).set({ categoryId }).where(eq(samples.filePath, filePath));
-    }
+    // 元数据/波形/分类交给后台 Job Queue 处理（与全量扫描行为一致）
+    const fileInfo: FileInfo = {
+      path: filePath,
+      name: fileName,
+      size: stats.size,
+      modifiedAt: stats.mtime,
+      hash,
+    };
+    enqueueMetadataJob([fileInfo]);
 
     // 通知渲染进程
     notifyLibraryChanged('add', filePath);
@@ -110,41 +114,21 @@ async function handleFileChange(filePath: string): Promise<void> {
   try {
     const stats = await stat(filePath);
     const hash = computeFileHash(filePath, stats.size, stats.mtimeMs);
+    const fileName = filePath.split(/[\\/]/).pop() || '';
 
     await db.update(samples)
       .set({ fileSize: stats.size, fileHash: hash, modifiedAt: stats.mtime })
       .where(eq(samples.filePath, filePath));
 
-    if (isMidiFile(filePath)) {
-      const midiMeta = await parseMidiFile(filePath);
-      if (midiMeta.duration > 0) {
-        await db.update(samples)
-          .set({
-            duration: midiMeta.duration,
-            bpm: midiMeta.bpm,
-            key: midiMeta.key,
-            midiTrackCount: midiMeta.trackCount,
-            midiNoteCount: midiMeta.noteCount,
-            midiInstruments: midiMeta.instruments.length ? JSON.stringify(midiMeta.instruments) : null,
-            midiTimeSignature: midiMeta.timeSignature,
-          })
-          .where(eq(samples.filePath, filePath));
-      }
-    } else {
-      const metadata = await parseAudioFile(filePath);
-      if (metadata.duration > 0) {
-        await db.update(samples)
-        .set({
-          duration: metadata.duration,
-          sampleRate: metadata.sampleRate,
-          bitRate: metadata.bitRate,
-          channels: metadata.channels,
-          bpm: metadata.bpm,
-          key: metadata.key,
-        })
-        .where(eq(samples.filePath, filePath));
-      }
-    }
+    // 元数据/波形/分类交给后台 Job Queue 重新分析（与全量扫描行为一致）
+    const fileInfo: FileInfo = {
+      path: filePath,
+      name: fileName,
+      size: stats.size,
+      modifiedAt: stats.mtime,
+      hash,
+    };
+    enqueueMetadataJob([fileInfo]);
 
     notifyLibraryChanged('update', filePath);
   } catch (error) {
@@ -172,9 +156,24 @@ export function startWatching(folderPath: string): void {
     },
   });
 
-  watcher.on('add', handleFileAdd);
-  watcher.on('change', handleFileChange);
-  watcher.on('unlink', handleFileRemove);
+  watcher.on('add', (filePath) => {
+    pendingAdds.add(filePath);
+    // 如果同时在 change 队列中，移除（add 优先）
+    pendingChanges.delete(filePath);
+    scheduleDebounced();
+  });
+  watcher.on('change', (filePath) => {
+    if (!pendingAdds.has(filePath)) {
+      pendingChanges.add(filePath);
+    }
+    scheduleDebounced();
+  });
+  watcher.on('unlink', (filePath) => {
+    pendingRemoves.add(filePath);
+    pendingAdds.delete(filePath);
+    pendingChanges.delete(filePath);
+    scheduleDebounced();
+  });
 
   watchers.set(folderPath, watcher);
   console.log(`Started watching: ${folderPath}`);

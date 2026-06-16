@@ -1,0 +1,182 @@
+.padContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  transition: border-color 0.15s ease;
+}
+
+.padContainer:hover {
+  border-color: var(--border-default);
+}
+
+.padEmpty {
+  opacity: 0.7;
+}
+
+.padEmpty .padButton {
+  background: var(--bg-hover);
+  border-style: dashed;
+}
+
+.padDragOver {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px var(--primary-alpha), 0 0 16px color-mix(in srgb, var(--primary) 30%, transparent);
+  background: color-mix(in srgb, var(--primary) 8%, transparent);
+}
+
+.padButton {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 10px;
+  background: var(--bg-hover);
+  border: 2px solid transparent;
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.08s ease;
+  outline: none;
+}
+
+.padButton:hover {
+  background: var(--bg-active);
+  transform: translateY(-1px);
+}
+
+.padButton:focus-visible {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px var(--primary-alpha);
+}
+
+.padActive {
+  background: var(--primary) !important;
+  transform: scale(0.96) !important;
+  box-shadow: 0 0 20px var(--primary-alpha);
+}
+
+.padActive .padKey,
+.padActive .padName {
+  color: white;
+}
+
+.padKey {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1;
+}
+
+.padName {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.padControls {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.controlRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.controlIcon {
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+  font-size: 12px;
+}
+
+.panLabel {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  width: 24px;
+  flex-shrink: 0;
+  text-align: center;
+}
+
+.slider {
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--bg-active);
+  appearance: none;
+  cursor: pointer;
+  outline: none;
+}
+
+.slider::-webkit-slider-thumb {
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--primary);
+  cursor: pointer;
+  transition: transform 0.1s ease;
+}
+
+.slider::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+}
+
+.slider::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--primary);
+  cursor: pointer;
+  border: none;
+}
+
+.controlValue {
+  font-size: 10px;
+  color: var(--text-tertiary);
+  width: 28px;
+  text-align: right;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.padActions {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.actionBtn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: none;
+  background: var(--bg-active);
+  color: var(--text-secondary);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.actionBtn:hover {
+  background: var(--border-default);
+  color: var(--text-primary);
+}
+
+.hiddenInput {
+  display: none;
+}

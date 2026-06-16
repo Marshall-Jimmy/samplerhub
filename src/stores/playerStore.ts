@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import Howl from 'howler';
 import { ipcClient } from '../services/ipcClient';
+import { midiPlay, midiStop, midiIsPlaying } from '../hooks/useMidiPreview';
 
 interface PlayableItem {
   id: number;
@@ -14,8 +15,22 @@ export type PlaybackRate = typeof PLAYBACK_RATES[number];
 
 // Howl 实例存于模块级变量，不进入 Zustand state
 let currentHowl: Howl.Howl | null = null;
+let currentBlobUrl: string | null = null;
 let preloadedHowl: Howl.Howl | null = null;
+let preloadedBlobUrl: string | null = null;
 let preloadedId: number | null = null;
+// 播放代数，用于防止旧 Howl 的异步回调覆盖新播放状态
+let playGeneration = 0;
+
+/** 清理 Howl 实例和对应的 Blob URL */
+function cleanupHowl(howl: Howl.Howl | null, blobUrl: string | null): void {
+  if (howl) {
+    howl.unload();
+  }
+  if (blobUrl) {
+    URL.revokeObjectURL(blobUrl);
+  }
+}
 
 interface PlayerState {
   currentSampleId: number | null;
@@ -35,6 +50,11 @@ interface PlayerState {
   loopStart: number | null;
   loopEnd: number | null;
   isABLooping: boolean;
+
+  // 最近播放（最多 50 条）
+  recentSamples: PlayableItem[];
+  addToRecent: (item: PlayableItem) => void;
+  clearRecent: () => void;
 
   play: (sampleId: number, filePath: string, fileName: string) => void;
   pause: () => void;
@@ -71,9 +91,73 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   loopStart: null,
   loopEnd: null,
   isABLooping: false,
+  recentSamples: [],
+
+  addToRecent: (item) => {
+    set(s => {
+      const filtered = s.recentSamples.filter(r => r.id !== item.id);
+      return { recentSamples: [item, ...filtered].slice(0, 50) };
+    });
+  },
+  clearRecent: () => set({ recentSamples: [] }),
 
   play: (sampleId, filePath, fileName) => {
-    const { playQueue, playbackRate } = get();
+    const { playQueue, playbackRate, isPlaying, currentSampleId } = get();
+
+    // --- MIDI 文件走 tinysynth 路径 ---
+    const isMidi = fileName.toLowerCase().endsWith('.mid') || fileName.toLowerCase().endsWith('.midi');
+    if (isMidi) {
+      // 同一首 MIDI 正在播 -> 停止
+      if (midiIsPlaying(filePath) && currentSampleId === sampleId && isPlaying) {
+        midiStop();
+        set({ isPlaying: false, currentTime: 0, progress: 0 });
+        if (typeof window !== 'undefined') {
+          (window as any).__modEventBus?.emit('player:stop', {});
+        }
+        return;
+      }
+
+      // 停止当前播放（音频或 MIDI）
+      cleanupHowl(currentHowl, currentBlobUrl);
+      currentHowl = null;
+      currentBlobUrl = null;
+      midiStop();
+
+      // 清除 A-B 循环
+      set({ loopStart: null, loopEnd: null, isABLooping: false });
+
+      // 更新队列索引
+      const idx = playQueue.findIndex(item => item.id === sampleId);
+      if (idx >= 0) {
+        set({ queueIndex: idx });
+      }
+
+      // 记录播放统计
+      ipcClient.recordPlay(sampleId).catch(() => {});
+      get().addToRecent({ id: sampleId, filePath, fileName });
+
+      // 设置播放状态
+      set({
+        currentSampleId: sampleId,
+        currentSampleName: fileName,
+        currentSamplePath: filePath,
+        isPlaying: true,
+        currentTime: 0,
+        progress: 0,
+      });
+
+      if (typeof window !== 'undefined') {
+        (window as any).__modEventBus?.emit('player:play', { sampleId, filePath, fileName });
+      }
+
+      // 异步加载并播放 MIDI
+      midiPlay(filePath).catch((err) => {
+        console.error('[Player] MIDI play failed:', err);
+        set({ isPlaying: false, currentTime: 0, progress: 0 });
+      });
+      return;
+    }
+    // --- MIDI 路径结束 ---
 
     // 如果是同一个文件，切换播放/暂停
     if (currentHowl && get().currentSampleId === sampleId) {
@@ -87,11 +171,13 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       return;
     }
 
-    // 停止当前播放
-    if (currentHowl) {
-      currentHowl.unload();
-      currentHowl = null;
-    }
+    // 递增代数，使旧 Howl 的异步回调失效
+    const gen = ++playGeneration;
+
+    // 停止当前播放：先 stop 再 unload，确保 HTML5 Audio 立即停止
+    cleanupHowl(currentHowl, currentBlobUrl);
+    currentHowl = null;
+    currentBlobUrl = null;
 
     // 清除 A-B 循环
     set({ loopStart: null, loopEnd: null, isABLooping: false });
@@ -105,35 +191,68 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     // 记录播放统计
     ipcClient.recordPlay(sampleId).catch(() => {});
 
-    // 创建新的 Howl 实例
-    const newHowl = new Howl.Howl({
-      src: [`file://${filePath}`],
-      volume: get().volume,
-      rate: playbackRate,
-      loop: get().isLooping,
-      html5: true,
-      onload: () => {
-        set({ duration: newHowl.duration() });
-      },
-      onplay: () => {
-        set({ isPlaying: true });
-      },
-      onpause: () => {
-        set({ isPlaying: false });
-      },
-      onstop: () => {
-        set({ isPlaying: false, currentTime: 0, progress: 0 });
-      },
-      onend: () => {
-        const { isLooping } = get();
-        if (isLooping) return;
-        // 非循环模式：播放完毕即停止，不自动播放下一个
-        set({ isPlaying: false, currentTime: 0, progress: 0 });
-      },
-    });
+    // 添加到最近播放
+    get().addToRecent({ id: sampleId, filePath, fileName });
 
-    currentHowl = newHowl;
-    newHowl.play();
+    // 通过 IPC 读取音频文件并创建 Blob URL，绕过 file:// URL 特殊字符问题
+    ipcClient.getAudioBuffer(filePath).then((arrayBuffer) => {
+      if (playGeneration !== gen) return;
+      const blob = new Blob([arrayBuffer], { type: 'audio/wav' });
+      const blobUrl = URL.createObjectURL(blob);
+
+      const newHowl = new Howl.Howl({
+        src: [blobUrl],
+        format: ['wav', 'mp3', 'flac'],
+        volume: get().volume,
+        rate: playbackRate,
+        loop: get().isLooping,
+        html5: true,
+        onload: () => {
+          if (playGeneration !== gen) return;
+          set({ duration: newHowl.duration() });
+        },
+        onloaderror: (_id, err) => {
+          if (playGeneration !== gen) return;
+          console.error('[Player] load error:', err);
+          URL.revokeObjectURL(blobUrl);
+          set({ isPlaying: false, currentTime: 0, progress: 0 });
+        },
+        onplay: () => {
+          if (playGeneration !== gen) return;
+          set({ isPlaying: true });
+        },
+        onplayerror: (_id, err) => {
+          if (playGeneration !== gen) return;
+          console.error('[Player] play error:', err);
+          newHowl.once('unlock', () => {
+            if (playGeneration === gen) newHowl.play();
+          });
+        },
+        onpause: () => {
+          if (playGeneration !== gen) return;
+          set({ isPlaying: false });
+        },
+        onstop: () => {
+          if (playGeneration !== gen) return;
+          set({ isPlaying: false, currentTime: 0, progress: 0 });
+        },
+        onend: () => {
+          if (playGeneration !== gen) return;
+          const { isLooping } = get();
+          if (isLooping) return;
+          URL.revokeObjectURL(blobUrl);
+          set({ isPlaying: false, currentTime: 0, progress: 0 });
+        },
+      });
+
+      currentHowl = newHowl;
+      currentBlobUrl = blobUrl;
+      newHowl.play();
+    }).catch((err) => {
+      if (playGeneration !== gen) return;
+      console.error('[Player] Failed to load audio buffer:', err);
+      set({ isPlaying: false, currentTime: 0, progress: 0 });
+    });
 
     set({
       currentSampleId: sampleId,
@@ -144,22 +263,33 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       progress: 0,
     });
 
+    if (typeof window !== 'undefined') {
+      (window as any).__modEventBus?.emit('player:play', { sampleId, filePath, fileName });
+    }
+
     // 预加载队列中下一个采样
     const currentIdx = idx >= 0 ? idx : playQueue.findIndex(item => item.id === sampleId);
     if (currentIdx >= 0 && currentIdx + 1 < playQueue.length) {
       const nextItem = playQueue[currentIdx + 1];
       if (preloadedId !== nextItem.id) {
-        if (preloadedHowl) {
-          preloadedHowl.unload();
-        }
+        cleanupHowl(preloadedHowl, preloadedBlobUrl);
+        preloadedHowl = null;
+        preloadedBlobUrl = null;
         preloadedId = nextItem.id;
-        preloadedHowl = new Howl.Howl({
-          src: [`file://${nextItem.filePath}`],
-          volume: get().volume,
-          rate: playbackRate,
-          html5: true,
-          preload: true,
-        });
+        // 预加载也使用 IPC 读取，避免 file:// URL 特殊字符问题
+        ipcClient.getAudioBuffer(nextItem.filePath).then((arrayBuffer) => {
+          const blob = new Blob([arrayBuffer], { type: 'audio/wav' });
+          const blobUrl = URL.createObjectURL(blob);
+          preloadedHowl = new Howl.Howl({
+            src: [blobUrl],
+            format: ['wav', 'mp3', 'flac'],
+            volume: get().volume,
+            rate: playbackRate,
+            html5: true,
+            preload: true,
+          });
+          preloadedBlobUrl = blobUrl;
+        }).catch(() => {});
       }
     }
   },
@@ -179,17 +309,20 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   },
 
   stop: () => {
-    if (currentHowl) {
-      currentHowl.stop();
-      currentHowl.unload();
-      currentHowl = null;
-    }
-    if (preloadedHowl) {
-      preloadedHowl.unload();
-      preloadedHowl = null;
-      preloadedId = null;
-    }
+    // 停止 MIDI
+    midiStop();
+    // 停止普通音频
+    cleanupHowl(currentHowl, currentBlobUrl);
+    currentHowl = null;
+    currentBlobUrl = null;
+    cleanupHowl(preloadedHowl, preloadedBlobUrl);
+    preloadedHowl = null;
+    preloadedBlobUrl = null;
+    preloadedId = null;
     set({ isPlaying: false, currentTime: 0, progress: 0, loopStart: null, loopEnd: null, isABLooping: false });
+    if (typeof window !== 'undefined') {
+      (window as any).__modEventBus?.emit('player:stop', {});
+    }
   },
 
   seek: (time: number) => {
@@ -259,12 +392,13 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       const next = playQueue[nextIndex];
       // 如果已预加载，直接使用预加载实例实现无缝切换
       const cached = preloadedHowl;
+      const cachedBlobUrl = preloadedBlobUrl;
       if (cached && preloadedId === next.id) {
-        if (currentHowl) {
-          currentHowl.unload();
-        }
+        cleanupHowl(currentHowl, currentBlobUrl);
         currentHowl = cached;
+        currentBlobUrl = cachedBlobUrl;
         preloadedHowl = null;
+        preloadedBlobUrl = null;
         preloadedId = null;
 
         currentHowl.volume(get().volume);
@@ -290,13 +424,20 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         if (nextIndex + 1 < playQueue.length) {
           const nextNextItem = playQueue[nextIndex + 1];
           preloadedId = nextNextItem.id;
-          preloadedHowl = new Howl.Howl({
-            src: [`file://${nextNextItem.filePath}`],
-            volume: get().volume,
-            rate: get().playbackRate,
-            html5: true,
-            preload: true,
-          });
+          // 预加载也使用 IPC 读取，避免 file:// URL 特殊字符问题
+          ipcClient.getAudioBuffer(nextNextItem.filePath).then((arrayBuffer) => {
+            const blob = new Blob([arrayBuffer], { type: 'audio/wav' });
+            const blobUrl = URL.createObjectURL(blob);
+            preloadedHowl = new Howl.Howl({
+              src: [blobUrl],
+              format: ['wav', 'mp3', 'flac'],
+              volume: get().volume,
+              rate: get().playbackRate,
+              html5: true,
+              preload: true,
+            });
+            preloadedBlobUrl = blobUrl;
+          }).catch(() => {});
         }
       } else {
         get().play(next.id, next.filePath, next.fileName);
