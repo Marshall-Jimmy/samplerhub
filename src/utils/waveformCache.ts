@@ -19,6 +19,10 @@ const MAX_CONCURRENT_UPGRADES = 3;
 let currentUpgradeCount = 0;
 const upgradeQueue: Array<{ sampleId: number; filePath: string }> = [];
 
+// 延迟启动波形升级，避免应用启动时大量并发解码
+let upgradeEnabled = false;
+setTimeout(() => { upgradeEnabled = true; processUpgradeQueue(); }, 8000);
+
 // 波形升级完成回调（发布-订阅）
 const waveformUpgradeCallbacks = new Map<number, Set<() => void>>();
 
@@ -150,6 +154,7 @@ function scheduleWaveformUpgrade(sampleId: number, filePath: string): void {
 
 /** 处理升级队列 */
 function processUpgradeQueue(): void {
+  if (!upgradeEnabled) return; // 启动前 8 秒内不处理升级
   while (currentUpgradeCount < MAX_CONCURRENT_UPGRADES && upgradeQueue.length > 0) {
     const task = upgradeQueue.shift();
     if (!task) break;

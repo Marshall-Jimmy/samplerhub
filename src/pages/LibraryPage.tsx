@@ -135,7 +135,7 @@ const LibraryPage: React.FC = () => {
     || advancedFilters.durationMin !== undefined || advancedFilters.key || advancedFilters.isFavorite
     || (advancedFilters.tagIds && advancedFilters.tagIds.length > 0));
 
-  const PAGE_SIZE = 200;
+  const PAGE_SIZE = 50;
 
   const [isPageReady, setIsPageReady] = useState(false);
 
