@@ -40,7 +40,7 @@ const ClassificationRuleEditor: React.FC = () => {
   });
 
   const { data: categories } = useQuery({
-    queryKey: ['categories'],
+    queryKey: ['categories', 'v2'],
     queryFn: () => ipcClient.getCategories(),
   });
 

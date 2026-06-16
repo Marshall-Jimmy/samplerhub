@@ -43,7 +43,7 @@ const musicalKeys = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#',
 const SearchPanel: React.FC<SearchPanelProps> = ({ isOpen, onClose, filters, onFiltersChange, resultCount }) => {
   const { t } = useTranslation();
   const { data: categories } = useQuery({
-    queryKey: ['categories'],
+    queryKey: ['categories', 'v2'],
     queryFn: () => ipcClient.getCategories(),
   });
 

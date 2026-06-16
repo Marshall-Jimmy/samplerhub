@@ -100,8 +100,9 @@ const CategoryTree: React.FC<CategoryTreeProps> = ({ activeSection, onSectionCha
   const { setActiveCategory, setActiveFolder, setActiveSection, activeCategoryId, activeFolderPath } = useLibraryStore();
 
   const { data: categories } = useQuery({
-    queryKey: ['categories'],
+    queryKey: ['categories', 'v2'], // v2: 修复了 children 污染问题后强制刷新缓存
     queryFn: () => ipcClient.getCategories(),
+    structuralSharing: false, // 防止缓存对象被意外污染
   });
 
   const [filesSectionExpanded, setFilesSectionExpanded] = useState(false);
@@ -129,7 +130,8 @@ const CategoryTree: React.FC<CategoryTreeProps> = ({ activeSection, onSectionCha
     const buildNode = (cat: Category): CategoryNode => {
       const color = categoryColorMap[cat.name] || '#6B7280';
       const childCats = childrenMap.get(cat.id) || [];
-      const childNodes = childCats
+      // 先复制再排序，避免修改 childrenMap 中的原始数组
+      const childNodes = [...childCats]
         .sort((a, b) => a.sortOrder - b.sortOrder)
         .map(buildNode);
       return {
