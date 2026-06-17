@@ -21,7 +21,7 @@
     "publish": "electron-builder --publish always"
   },
   "dependencies": {
-    "@ant-design/icons": "^5.3.0",
+    "@ant-design/icons": "^6.2.5",
     "@fontsource/inter": "^5.2.8",
     "@huggingface/transformers": "^4.2.0",
     "@tabler/icons-react": "^3.44.0",
