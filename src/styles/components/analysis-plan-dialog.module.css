@@ -1,0 +1,186 @@
+/* ── AnalysisPlanDialog 分析方案选择对话框 ── */
+
+/* 方案卡片网格布局 */
+.presetGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+/* 单个方案卡片 */
+.presetCard {
+  position: relative;
+  padding: 16px;
+  border-radius: var(--radius-lg);
+  border: 1.5px solid var(--border-default);
+  background: var(--bg-surface);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.presetCard:hover {
+  border-color: var(--border-strong);
+  background: var(--bg-hover);
+}
+
+/* 选中状态：高亮边框 */
+.presetCardSelected {
+  border-color: var(--brand-primary);
+  background: color-mix(in srgb, var(--brand-primary) 6%, var(--bg-surface));
+  box-shadow: 0 0 0 1px var(--brand-primary), var(--shadow-sm);
+}
+
+.presetCardSelected:hover {
+  background: color-mix(in srgb, var(--brand-primary) 8%, var(--bg-surface));
+}
+
+/* 方案标题行 */
+.presetHeader {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.presetTitle {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  flex: 1;
+}
+
+/* 方案描述 */
+.presetDesc {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin-bottom: 10px;
+}
+
+/* 预估时间标签 */
+.estimatedTime {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--brand-accent);
+  background: var(--brand-accent-dim);
+  padding: 3px 10px;
+  border-radius: 20px;
+}
+
+.estimatedTimeLoading {
+  color: var(--text-tertiary);
+  background: var(--bg-hover);
+}
+
+/* ── 自定义配置面板 ── */
+.customPanel {
+  margin-top: 16px;
+  padding: 16px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-default);
+  background: var(--bg-surface);
+}
+
+.customSection {
+  margin-bottom: 16px;
+}
+
+.customSection:last-child {
+  margin-bottom: 0;
+}
+
+/* 单个分析项开关行 */
+.analysisItem {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated);
+  margin-bottom: 8px;
+}
+
+.analysisItem:last-child {
+  margin-bottom: 0;
+}
+
+.analysisItemInfo {
+  flex: 1;
+  min-width: 0;
+}
+
+.analysisItemName {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 2px;
+}
+
+.analysisItemDesc {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  line-height: 1.4;
+}
+
+/* 并发数区域 */
+.concurrencySection {
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated);
+}
+
+.concurrencyHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.concurrencyLabel {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.concurrencyValue {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--brand-primary);
+}
+
+/* ── 底部按钮区域 ── */
+.footerActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+/* 描述文字区域 */
+.description {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 16px;
+  line-height: 1.5;
+}
+
+/* 文件数量高亮 */
+.fileCount {
+  color: var(--brand-primary);
+  font-weight: 600;
+}
+
+/* 自定义面板标题 */
+.customPanelTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}

@@ -1,0 +1,263 @@
+/* ── SampleCard ──────────────────────────────── */
+.card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: transparent;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all 0.1s ease;
+  user-select: none;
+  position: relative;
+}
+
+.card:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-subtle);
+}
+
+.cardPlaying {
+  border-color: var(--card-accent, #6366F1);
+  background: color-mix(in srgb, var(--card-accent, #6366F1) 3%, transparent);
+  animation: cardBreathe 2.5s ease-in-out infinite;
+}
+
+.cardPlaying:hover {
+  background: color-mix(in srgb, var(--card-accent, #6366F1) 5%, transparent);
+  animation: none;
+}
+
+@keyframes cardBreathe {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--card-accent, #6366F1) 0%, transparent); }
+  50%      { box-shadow: 0 0 12px 0 color-mix(in srgb, var(--card-accent, #6366F1) 8%, transparent); }
+}
+
+.cardDraggable {
+  cursor: grab;
+}
+
+.cardDraggable:active {
+  cursor: grabbing;
+  transform: scale(0.97);
+  opacity: 0.85;
+  box-shadow: var(--shadow-md);
+  transition: transform var(--duration-fast) var(--ease-out), opacity var(--duration-fast) var(--ease-out);
+}
+
+.cardFocused {
+  outline: 2px solid var(--brand-primary);
+  outline-offset: -2px;
+  border-radius: var(--radius-md);
+}
+
+.cardSelected {
+  background: color-mix(in srgb, var(--brand-primary) 8%, transparent);
+  border-color: color-mix(in srgb, var(--brand-primary) 30%, transparent);
+}
+
+.cardSelected:hover {
+  background: color-mix(in srgb, var(--brand-primary) 12%, transparent);
+}
+
+/* Play Button */
+.playBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-tertiary);
+  font-size: 14px;
+  flex-shrink: 0;
+  transition: all var(--duration-fast) var(--ease-out);
+  padding: 0;
+}
+
+.playBtn:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-primary);
+  transform: scale(1.08);
+}
+
+.playBtn:active {
+  transform: scale(0.92);
+}
+
+.playBtnPlaying {
+  background: color-mix(in srgb, var(--card-accent, #6366F1) 9%, transparent);
+  color: var(--card-accent, #6366F1);
+  animation: playBtnPulse 2s ease-in-out infinite;
+}
+
+@keyframes playBtnPulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--card-accent, #6366F1) 20%, transparent); }
+  50%      { box-shadow: 0 0 8px 2px color-mix(in srgb, var(--card-accent, #6366F1) 10%, transparent); }
+}
+
+/* Mini Waveform */
+.miniWaveform {
+  width: 64px;
+  height: 24px;
+  flex-shrink: 0;
+  border-radius: 3px;
+  display: block;
+  opacity: 0.7;
+}
+
+.miniWaveformPlaying {
+  opacity: 1;
+}
+
+/* Name */
+.name {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+  transition: color 0.1s ease;
+}
+
+.namePlaying {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.nameCorrupted {
+  color: #EF4444;
+  text-decoration: line-through;
+  opacity: 0.6;
+}
+
+/* Corrupted Badge */
+.corruptedBadge {
+  font-size: 9px;
+  font-weight: 700;
+  color: #EF4444;
+  background: rgba(239, 68, 68, 0.12);
+  padding: 1px 5px;
+  border-radius: 3px;
+  flex-shrink: 0;
+  letter-spacing: 0.5px;
+}
+
+/* Category Dot */
+.categoryIcon {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  opacity: 0.5;
+  transition: opacity 0.1s ease;
+}
+
+.categoryIconPlaying {
+  opacity: 1;
+}
+
+/* Meta Info */
+.metaInfo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.metaItem {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+
+.metaNum {
+  font-family: var(--font-mono);
+}
+
+.metaItemDim {
+  color: var(--text-disabled);
+}
+
+.midiBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: linear-gradient(135deg, #6366F1, #8B5CF6);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  line-height: 1.4;
+}
+
+/* Actions */
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.1s ease;
+}
+
+.card:hover .actions,
+.actionsVisible {
+  opacity: 1;
+}
+
+.actionBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  border: none;
+  cursor: pointer;
+  background: transparent;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  transition: all 0.1s ease;
+  padding: 0;
+}
+
+.actionBtn:hover {
+  background: var(--bg-active);
+  color: var(--text-primary);
+}
+
+.actionBtnFavorite {
+  color: #F59E0B;
+  animation: heartBounce 400ms var(--ease-spring);
+}
+
+.actionBtnTagActive {
+  background: rgba(99, 102, 241, 0.12);
+  color: var(--brand-primary);
+}
+
+/* Tag Manager Popup */
+.tagPopup {
+  position: absolute;
+  top: 100%;
+  right: 12px;
+  z-index: 200;
+  margin-top: 4px;
+}
+
+/* Highlight */
+.highlight {
+  background: rgba(99, 102, 241, 0.25);
+  color: var(--text-primary);
+  border-radius: 2px;
+  padding: 0 1px;
+}

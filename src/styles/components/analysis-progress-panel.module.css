@@ -1,0 +1,187 @@
+/* ── AnalysisProgressPanel ──────────────────── */
+
+/* 面板容器：固定底部，毛玻璃效果 */
+.panel {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  z-index: 200;
+  padding: 16px 24px;
+  background: rgba(22, 22, 30, 0.82);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-top: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.3);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* ── 顶部：状态标签 + 当前文件 ────────────── */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.statusArea {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  flex: 1;
+}
+
+.statusTag {
+  flex-shrink: 0;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.currentFileLabel {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.55));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 500px;
+}
+
+.fileIcon {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--text-tertiary, rgba(255, 255, 255, 0.35));
+}
+
+/* ── 中间：进度条 ──────────────────────────── */
+.progressArea {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.progressBar {
+  flex: 1;
+  margin-bottom: 0;
+}
+
+/* 覆盖 antd Progress 内部样式，适配暗色主题 */
+.progressBar :global(.ant-progress-bg) {
+  border-radius: 4px;
+  transition: width 0.4s ease;
+}
+
+.progressBar :global(.ant-progress-inner) {
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 4px;
+}
+
+.progressBar :global(.ant-progress-text) {
+  display: none;
+}
+
+.progressText {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.55));
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+  min-width: 60px;
+  text-align: right;
+}
+
+/* ── 下方三列统计 ──────────────────────────── */
+.statsRow {
+  display: flex;
+  align-items: center;
+  gap: 32px;
+}
+
+.statItem {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.statIcon {
+  font-size: 14px;
+}
+
+.statIconSuccess {
+  color: #52c41a;
+}
+
+.statIconError {
+  color: #ff4d4f;
+}
+
+.statIconTime {
+  color: #6366f1;
+}
+
+.statLabel {
+  font-size: 12px;
+  color: var(--text-tertiary, rgba(255, 255, 255, 0.35));
+}
+
+.statValue {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary, rgba(255, 255, 255, 0.88));
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── 底部操作按钮 ──────────────────────────── */
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.actionBtn {
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* ── 响应式适配 ────────────────────────────── */
+@media (max-width: 768px) {
+  .panel {
+    padding: 12px 16px;
+    gap: 10px;
+  }
+
+  .currentFileLabel {
+    max-width: 200px;
+  }
+
+  .statsRow {
+    gap: 16px;
+  }
+
+  .statLabel {
+    display: none;
+  }
+}
+
+@media (max-width: 480px) {
+  .panel {
+    padding: 10px 12px;
+    gap: 8px;
+  }
+
+  .currentFileLabel {
+    max-width: 140px;
+    font-size: 11px;
+  }
+
+  .statsRow {
+    gap: 12px;
+  }
+}

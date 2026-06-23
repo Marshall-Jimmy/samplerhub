@@ -1,0 +1,352 @@
+/* ── Sidebar ─────────────────────────────────── */
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  user-select: none;
+}
+
+/* Header */
+.header {
+  padding: 20px 16px 12px;
+}
+
+.headerRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.sectionLabel {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-tertiary);
+}
+
+.iconBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  border: none;
+  cursor: pointer;
+  background: transparent;
+  color: var(--text-secondary);
+  transition: all 0.15s ease;
+  font-size: 14px;
+  padding: 0;
+}
+
+.iconBtn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.iconBtn:focus-visible {
+  outline: 2px solid var(--brand-primary);
+  outline-offset: 2px;
+}
+
+.iconBtnSmall {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+/* Category Tree Area */
+.treeArea {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 0 8px;
+  min-height: 120px;
+}
+
+/* On medium-height screens, ensure tree area is visible */
+@media (max-height: 700px) {
+  .treeArea {
+    min-height: 80px;
+  }
+  .playlistList {
+    max-height: 100px;
+  }
+}
+
+/* Playlists Section */
+.playlistsSection {
+  flex-shrink: 0;
+  padding: 8px 8px 4px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.playlistsHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 12px 6px;
+}
+
+.playlistList {
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.emptyHint {
+  padding: 6px 8px;
+  font-size: 11px;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.emptyHint:hover {
+  color: var(--primary);
+  background: rgba(99, 102, 241, 0.06);
+}
+
+.playlistItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 12px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  background: transparent;
+  color: var(--text-secondary);
+  transition: background 0.12s ease;
+  margin-bottom: 1px;
+  position: relative;
+  border: none;
+  text-align: left;
+  font-size: inherit;
+  font-family: inherit;
+}
+
+.playlistItem:hover {
+  background: var(--bg-hover);
+}
+
+.playlistItemActive {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.playlistItemActive:hover {
+  background: var(--bg-hover);
+}
+
+.playlistDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.playlistName {
+  font-size: 12px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.playlistCount {
+  font-size: 10px;
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+
+.playlistActions {
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.15s;
+  flex-shrink: 0;
+}
+
+.playlistItem:hover .playlistActions {
+  opacity: 1;
+}
+
+.actionBtn {
+  border: none;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  font-size: 10px;
+  padding: 2px;
+  display: flex;
+  align-items: center;
+  border-radius: 4px;
+}
+
+.actionBtn:hover {
+  color: var(--text-primary);
+  background: var(--bg-active);
+}
+
+.playlistEditInput {
+  flex: 1;
+  background: var(--bg-base);
+  border: 1px solid var(--brand-primary);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 12px;
+  padding: 1px 6px;
+  outline: none;
+  min-width: 0;
+}
+
+/* Quick Sections */
+.quickSections {
+  flex-shrink: 0;
+  padding: 8px 8px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.quickSectionItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  transition: background 0.12s ease;
+  margin-bottom: 2px;
+  font-size: inherit;
+  font-family: inherit;
+  text-align: left;
+}
+
+.quickSectionItem:hover {
+  background: var(--bg-hover);
+}
+
+.quickSectionItemActive {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  position: relative;
+}
+
+.quickSectionItemActive::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 4px;
+  bottom: 4px;
+  width: 3px;
+  border-radius: 0 2px 2px 0;
+  background: var(--brand-primary);
+  animation: indicatorSlideIn var(--duration-normal) var(--ease-spring);
+}
+
+.quickSectionIcon {
+  font-size: 14px;
+}
+
+.quickSectionLabel {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+/* Footer */
+.footer {
+  flex-shrink: 0;
+  padding: 10px 16px;
+  border-top: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.footerBrand {
+  font-size: 11px;
+  color: var(--text-disabled);
+}
+
+.footerVersion {
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 8px;
+  background: rgba(99, 102, 241, 0.08);
+  color: var(--text-tertiary);
+  font-weight: 500;
+}
+
+/* ── Collapsed Sidebar (icon-only, 56px) ─────── */
+.sidebarCollapsed {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 12px 0;
+  gap: 4px;
+  height: 100%;
+  user-select: none;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.collapsedIconBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-md);
+  border: none;
+  cursor: pointer;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 16px;
+  padding: 0;
+  transition: all 0.15s ease;
+}
+
+.collapsedIconBtn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.collapsedIconBtnActive {
+  background: var(--bg-hover);
+  color: var(--icon-color, var(--brand-primary));
+}
+
+.collapsedIconBtnActive:hover {
+  background: var(--bg-active);
+}
+
+.collapsedDivider {
+  width: 24px;
+  height: 1px;
+  background: var(--border-subtle);
+  margin: 6px 0;
+  flex-shrink: 0;
+}
+
+.collapsedPlaylistDot {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+
+.collapsedMore {
+  font-size: 10px;
+  color: var(--text-tertiary);
+  font-weight: 600;
+  line-height: 40px;
+  text-align: center;
+}

@@ -1,0 +1,46 @@
+/* EmptyState */
+.container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  gap: 12px;
+  text-align: center;
+}
+
+.iconWrap {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--bg-hover);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  color: var(--text-tertiary);
+  margin-bottom: 4px;
+  animation: fadeInScale var(--duration-slow) var(--ease-spring);
+}
+
+.title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.description {
+  font-size: 13px;
+  color: var(--text-tertiary);
+  margin: 0;
+  max-width: 280px;
+  line-height: 1.5;
+}
+
+.actionArea {
+  margin-top: 8px;
+  animation: slideInUp var(--duration-normal) var(--ease-out);
+  animation-delay: 100ms;
+  animation-fill-mode: both;
+}

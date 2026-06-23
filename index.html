@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="/appIcon_256.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; worker-src 'self' blob:; connect-src 'self' https: http:; media-src 'self' blob: local-audio: online-preview: data: file:; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob: https:;" />
+    <title>Jima's SamplerHub</title>
+    <!-- Inter 字体已通过 npm 包本地引入，避免外链 CSP 问题 -->
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

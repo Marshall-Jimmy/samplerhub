@@ -1,0 +1,358 @@
+/* SampleDetailPanel */
+.panel {
+  height: 100%;
+  background: var(--bg-elevated);
+  border-left: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  flex-shrink: 0;
+  position: relative;
+  min-width: 240px;
+  max-width: 480px;
+}
+
+/* Resize handle */
+.resizeHandle {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 4px;
+  cursor: col-resize;
+  z-index: 10;
+  transition: background 0.15s;
+}
+
+.resizeHandle:hover,
+.resizeHandle:active {
+  background: var(--brand-primary);
+}
+
+/* Small screen overlay mode */
+.overlayBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.panelOverlay {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 950;
+  width: min(320px, 85vw);
+  background: var(--bg-elevated);
+  border-left: 1px solid var(--border-subtle);
+  box-shadow: -8px 0 24px rgba(0, 0, 0, 0.4);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Header */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 16px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+
+.headerTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.closeBtn {
+  border: none;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 4px;
+  border-radius: 4px;
+}
+
+.closeBtn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+/* Content */
+.content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 16px 16px;
+}
+
+/* Waveform */
+.waveformWrap {
+  margin-top: 16px;
+  margin-bottom: 16px;
+}
+
+.waveform {
+  width: 100%;
+  height: 80px;
+  border-radius: 8px;
+  display: block;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+/* Play + Favorite */
+.playRow {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.playBtn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 0;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  background: var(--brand-primary);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.favBtn {
+  width: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle);
+  cursor: pointer;
+  background: transparent;
+  color: var(--text-tertiary);
+  font-size: 16px;
+}
+
+.favBtnActive {
+  color: #FB7185;
+}
+
+/* Quick actions */
+.quickActions {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+
+.quickBtn {
+  flex: 1;
+  padding: 6px 0;
+  border-radius: 6px;
+  border: 1px solid var(--border-subtle);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.quickBtn:hover {
+  background: var(--bg-hover);
+}
+
+/* Metadata */
+.metaBlock {
+  background: var(--bg-base);
+  border-radius: 8px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.metaRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.metaLabel {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+  width: 60px;
+}
+
+.metaValue {
+  font-size: 12px;
+  color: var(--text-secondary);
+  text-align: right;
+  word-break: break-all;
+  flex: 1;
+  min-width: 0;
+}
+
+/* Tags */
+.tagsSection {
+  margin-top: 12px;
+}
+
+.tagsTitle {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  margin-bottom: 6px;
+  display: block;
+}
+
+.tagsList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.tag {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid;
+}
+
+/* Similar samples */
+.similarSection {
+  margin-top: 16px;
+}
+
+.similarHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.similarTitle {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  font-weight: 600;
+}
+
+.similarList {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.similarItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border-subtle);
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  color: var(--text-secondary);
+  transition: background 0.12s;
+}
+
+.similarItem:hover {
+  background: var(--bg-hover);
+}
+
+.similarName {
+  font-size: 12px;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.similarBpm {
+  font-size: 10px;
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+
+/* PANNs Audio Segments */
+.segmentsSection {
+  margin-top: 16px;
+}
+
+.segmentsHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.segmentsTitle {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  font-weight: 600;
+}
+
+.segmentsList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.segmentGroup {
+  background: var(--bg-base);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.segmentLabel {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.segmentName {
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.segmentProb {
+  font-size: 10px;
+  color: var(--brand-primary);
+  font-weight: 600;
+}
+
+.segmentTimeline {
+  position: relative;
+  height: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.segmentBar {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  background: var(--brand-primary);
+  border-radius: 3px;
+  min-width: 2px;
+  transition: opacity 0.15s;
+}
+
+.segmentBar:hover {
+  opacity: 1 !important;
+  background: #818cf8;
+}

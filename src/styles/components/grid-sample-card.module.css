@@ -1,0 +1,167 @@
+/* GridSampleCard */
+.card {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  padding: 12px;
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  position: relative;
+  overflow: hidden;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+.card:hover {
+  border-color: var(--border-default);
+}
+
+.cardSelected {
+  background: rgba(99, 102, 241, 0.12);
+  border-color: rgba(99, 102, 241, 0.4);
+}
+
+.cardPlaying {
+  background: rgba(99, 102, 241, 0.08);
+  animation: gridCardBreathe 2.5s ease-in-out infinite;
+}
+
+@keyframes gridCardBreathe {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0); }
+  50%      { box-shadow: 0 0 16px 0 rgba(99, 102, 241, 0.1); }
+}
+
+.cardDragging {
+  border-color: var(--brand-primary);
+  transform: scale(0.95);
+  opacity: 0.85;
+  box-shadow: var(--shadow-md);
+  transition: transform var(--duration-fast) var(--ease-out), opacity var(--duration-fast) var(--ease-out);
+}
+
+/* Accent bar */
+.accentBar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+}
+
+.accentBarIcon {
+  position: absolute;
+  top: 4px;
+  left: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(4px);
+}
+
+.accentBarLabel {
+  position: absolute;
+  top: 5px;
+  left: 28px;
+  font-size: 9px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.75);
+  line-height: 1;
+  white-space: nowrap;
+  pointer-events: none;
+  text-transform: capitalize;
+}
+
+/* Waveform */
+.waveform {
+  width: 100%;
+  height: 40px;
+  border-radius: 6px;
+  display: block;
+}
+
+/* Info */
+.info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.name {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.namePlaying {
+  color: var(--text-primary);
+}
+
+.meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  color: var(--text-tertiary);
+}
+
+.midiBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0px 4px;
+  border-radius: 2px;
+  background: linear-gradient(135deg, #6366F1, #8B5CF6);
+  color: #fff;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  line-height: 1.5;
+}
+
+.playCount {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 9px;
+  color: var(--text-quaternary, var(--text-tertiary));
+  opacity: 0.7;
+}
+
+/* Favorite */
+.favBtn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: var(--text-tertiary);
+  font-size: 14px;
+  padding: 2px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.favBtn:hover {
+  opacity: 1;
+}
+
+.favBtnVisible {
+  opacity: 1;
+  color: #FB7185;
+  animation: heartBounce 400ms var(--ease-spring);
+}
+
+.favBtnGlow {
+  box-shadow: 0 0 8px 2px rgba(251, 113, 133, 0.45);
+}

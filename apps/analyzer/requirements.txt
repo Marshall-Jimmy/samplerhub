@@ -1,0 +1,25 @@
+# CLAP 语义嵌入
+laion-clap>=1.1.6
+
+# 音频处理
+librosa>=0.10.1
+soundfile>=0.12.1
+
+# 深度学习框架 (CLAP 依赖)
+torch>=2.0.0
+torchaudio>=2.0.0
+
+# 模型下载
+transformers>=4.35.0
+huggingface-hub>=0.19.0
+
+# 音频 I/O
+audioread>=3.0.0
+
+# FastAPI 服务
+fastapi>=0.104.0
+uvicorn>=0.24.0
+
+# 工具
+numpy>=1.24.0
+python-multipart>=0.0.6
