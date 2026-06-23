@@ -1,4 +1,4 @@
-import { sqliteTable, integer, text, real, blob, primaryKey } from 'drizzle-orm/sqlite-core';
+import { sqliteTable, integer, text, real, blob, primaryKey, index } from 'drizzle-orm/sqlite-core';
 import { sql } from 'drizzle-orm';
 
 export const watchedFolders = sqliteTable('watched_folders', {
@@ -7,7 +7,9 @@ export const watchedFolders = sqliteTable('watched_folders', {
   lastScanAt: integer('last_scan_at', { mode: 'timestamp' }),
   isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true),
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull().$defaultFn(() => new Date()),
-});
+}, (table) => ({
+  pathIdx: index('watched_folders_path_idx').on(table.path),
+}));
 
 export const categories = sqliteTable('categories', {
   id: integer('id').primaryKey({ autoIncrement: true }),
@@ -54,7 +56,17 @@ export const samples = sqliteTable('samples', {
   midiNoteCount: integer('midi_note_count'),
   midiInstruments: text('midi_instruments'),
   midiTimeSignature: text('midi_time_signature'),
-});
+}, (table) => ({
+  fileNameIdx: index('samples_file_name_idx').on(table.fileName),
+  categoryIdIdx: index('samples_category_id_idx').on(table.categoryId),
+  bpmIdx: index('samples_bpm_idx').on(table.bpm),
+  keyIdx: index('samples_key_idx').on(table.key),
+  isFavoriteIdx: index('samples_is_favorite_idx').on(table.isFavorite),
+  playCountIdx: index('samples_play_count_idx').on(table.playCount),
+  fileTypeIdx: index('samples_file_type_idx').on(table.fileType),
+  indexedAtIdx: index('samples_indexed_at_idx').on(table.indexedAt),
+  lastPlayedAtIdx: index('samples_last_played_at_idx').on(table.lastPlayedAt),
+}));
 
 export const tags = sqliteTable('tags', {
   id: integer('id').primaryKey({ autoIncrement: true }),
