@@ -34,3 +34,21 @@ yarn.lock
 /playwright/.cache/
 
 test/screenshots
+
+# 参赛材料（不需要放在 GitHub 上）
+参赛材料/
+
+# 备份和临时文件
+*.bak
+*.zip
+*.tar
+*.tar.gz
+*.blockmap
+pnpm-workspace.yaml
+
+# 审计和文档草稿
+.trae/documents/
+drag-drop-audit/
+
+# 覆盖率报告
+coverage/

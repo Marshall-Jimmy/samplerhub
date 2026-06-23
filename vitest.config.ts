@@ -8,6 +8,20 @@ export default defineConfig({
     exclude: ['test/e2e/**/*.spec.ts'],
     passWithNoTests: true,
     testTimeout: 1000 * 29,
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'lcov', 'json-summary'],
+      reportsDirectory: './coverage',
+      include: ['src/**/*.{ts,tsx}', 'shared/**/*.{ts,tsx}'],
+      exclude: [
+        'src/type/**',
+        'src/types/**',
+        'src/vite-env.d.ts',
+        'src/demos/**',
+        'src/i18n/locales/**',
+        'src/**/*.module.css',
+      ],
+    },
   },
   resolve: {
     alias: {

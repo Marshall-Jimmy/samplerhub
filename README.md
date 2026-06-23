@@ -51,6 +51,17 @@ SamplerHub is an intelligent sample management tool designed for music producers
 - One-click download to local library
 - Preview before download with built-in audio player
 
+### DAW Integration
+
+Drag samples directly from SamplerHub into any DAW:
+
+- **Drag & Drop**: Drag any sample from the library view directly onto your DAW's timeline or sampler
+- **Multi-select**: Select multiple samples (Ctrl+Click or Shift+Click) and drag them all at once
+- **Context Menu**: Right-click a sample and choose "Drag to DAW"
+- **Batch Export**: Use the toolbar button to drag all selected samples to your DAW
+- **Compatible with**: Reaper, Ableton Live, FL Studio, Logic Pro, Studio One, Cubase, and any DAW that accepts file drops
+- **Format Preserved**: Original audio format is maintained during drag — no re-encoding
+
 **Multi-language Support**
 11 languages: English, Chinese, Japanese, Korean, German, French, Spanish, Italian, Portuguese, Russian, Uyghur
 
@@ -165,6 +176,14 @@ SamplerHub 是一款专为音乐制作人设计的智能采样管理工具。它
 - 集成免费采样库：Freesound、Pixabay、SND.dev、Lotsofsounds
 - 一键下载到本地库
 - 内置音频播放器，下载前可预览
+
+**DAW 集成**
+- 直接将采样从 SamplerHub 拖拽到任意 DAW
+- 支持多选批量拖拽（Ctrl+点击 或 Shift+点击）
+- 右键菜单"拖拽到 DAW"快捷操作
+- 工具栏批量拖拽按钮
+- 兼容 Reaper、Ableton Live、FL Studio、Logic Pro、Studio One、Cubase 等所有支持文件拖放的 DAW
+- 拖拽时保持原始音频格式，无重编码
 
 **多语言支持**
 11 种语言：中文、英语、日语、韩语、德语、法语、西班牙语、意大利语、葡萄牙语、俄语、维吾尔语
