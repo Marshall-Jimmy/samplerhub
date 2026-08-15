@@ -13,6 +13,7 @@ import { registerPlaylistHandlers } from './ipcPlaylists';
 import { registerAudioHandlers } from './ipcAudio';
 import { registerImportExportHandlers } from './ipcImportExport';
 import { registerBackupConfigHandlers } from './ipcBackupConfig';
+import { perfMonitor } from './performanceMonitor';
 
 export async function registerIpcHandlers(): Promise<void> {
   await initDatabase();
@@ -53,6 +54,27 @@ export async function registerIpcHandlers(): Promise<void> {
   };
 
   const ctx: IpcContext = { db, sqlite, sampleListFields };
+
+  ipcMain.handle('perf:getMetrics', () => {
+    const sampleCount = sqlite.prepare('SELECT COUNT(*) FROM samples').pluck().get() as number;
+    return {
+      success: true,
+      data: {
+        startupTime: perfMonitor.getStartupTime(),
+        memory: perfMonitor.getMemoryUsage(),
+        databaseSize: perfMonitor.getDatabaseSize(),
+        sampleCount,
+        metrics: perfMonitor.getMetrics(),
+      },
+    };
+  });
+  ipcMain.on('perf:metric', (_event, payload: unknown) => {
+    if (!payload || typeof payload !== 'object') return;
+    const { name, value } = payload as { name?: unknown; value?: unknown };
+    if (typeof name !== 'string' || name.length === 0 || name.length > 64) return;
+    if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) return;
+    perfMonitor.recordMetric(`renderer:${name}`, value);
+  });
 
   // Register all handler modules
   registerSamplesHandlers(ctx);

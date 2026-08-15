@@ -1,9 +1,10 @@
 import { ipcMain } from 'electron';
 import fs from 'node:fs';
+import { createHash } from 'node:crypto';
 import { IPC_CHANNELS } from '../../../shared/types/ipc.types';
 import type { IpcContext } from './ipcTypes';
 import { samples, categories, sampleTags, audioSegments } from '../../../drizzle/schema';
-import { eq, and, sql, count, desc, asc, like, gte, lte, inArray } from 'drizzle-orm';
+import { eq, and, sql, desc, asc, like, gte, lte, inArray } from 'drizzle-orm';
 import type { SearchFilters } from '../../../shared/types/sample.types';
 import { validatePath, validateString, validatePositiveInt, validateArray, validateNumber, sanitizeFtsQuery } from './ipcValidation';
 import { extractBPMAndKey } from './bpmKeyParser';
@@ -35,6 +36,16 @@ function cosineSim(a: Float32Array, b: Float32Array): number {
   return denom === 0 ? 0 : dot / denom;
 }
 
+function hashFileContents(filePath: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const hash = createHash('sha256');
+    const stream = fs.createReadStream(filePath);
+    stream.on('error', reject);
+    stream.on('data', (chunk) => hash.update(chunk));
+    stream.on('end', () => resolve(hash.digest('hex')));
+  });
+}
+
 import { resetDatabase, getSqlite } from './database';
 import { handleFileAdd } from './fileWatcher';
 
@@ -62,7 +73,7 @@ export function registerSamplesHandlers(ctx: IpcContext): void {
         .limit(limit)
         .offset(offset);
 
-      const [{ total }] = await db.select({ total: count() }).from(samples);
+      const [{ total }] = await db.select({ total: sql<number>`count(*)` }).from(samples);
 
       return { success: true, data: { items: result, total, offset, limit } };
     } catch (error) {
@@ -256,7 +267,7 @@ export function registerSamplesHandlers(ctx: IpcContext): void {
       const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
       // 查总数
-      const [{ total }] = await db.select({ total: count() }).from(samples).where(whereClause);
+      const [{ total }] = await db.select({ total: sql<number>`count(*)` }).from(samples).where(whereClause);
 
       // 排序
       const sortableFields: Record<string, any> = {
@@ -465,19 +476,44 @@ export function registerSamplesHandlers(ctx: IpcContext): void {
     }
   });
 
-  // 重复检测：基于 fileHash 查找重复文件
+  // 重复检测按大小预筛，再按真实文件内容哈希；扫描期的 fileHash 只是快速变更指纹。
   ipcMain.handle(IPC_CHANNELS.GET_DUPLICATES, async () => {
     try {
-      const result = await db.select({
-        hash: samples.fileHash,
-        count: sql<number>`count(*)`.as('count'),
-        ids: sql<string>`group_concat(${samples.id})`.as('ids'),
-        names: sql<string>`group_concat(${samples.fileName})`.as('names'),
-      })
-        .from(samples)
-        .where(sql`${samples.fileHash} != ''`)
-        .groupBy(samples.fileHash)
-        .having(sql`count(*) > 1`);
+      const candidates = sqlite.prepare(`
+        SELECT id, file_path AS filePath, file_name AS fileName, file_size AS fileSize
+        FROM samples
+        WHERE file_size IN (
+          SELECT file_size FROM samples WHERE file_size > 0 GROUP BY file_size HAVING COUNT(*) > 1
+        )
+        ORDER BY file_size, id
+      `).all() as Array<{ id: number; filePath: string; fileName: string; fileSize: number }>;
+
+      const hashes = new Map<string, typeof candidates>();
+      let cursor = 0;
+      const workers = Array.from({ length: Math.min(4, candidates.length) }, async () => {
+        while (cursor < candidates.length) {
+          const candidate = candidates[cursor++];
+          try {
+            const contentHash = await hashFileContents(candidate.filePath);
+            const key = `${candidate.fileSize}:${contentHash}`;
+            const group = hashes.get(key) ?? [];
+            group.push(candidate);
+            hashes.set(key, group);
+          } catch {
+            // 文件可能在扫描后被移动；缺失文件不应让整个重复检测失败。
+          }
+        }
+      });
+      await Promise.all(workers);
+
+      const result = [...hashes.entries()]
+        .filter(([, group]) => group.length > 1)
+        .map(([key, group]) => ({
+          hash: key.slice(key.indexOf(':') + 1),
+          count: group.length,
+          ids: group.map((item) => item.id).join(','),
+          names: group.map((item) => item.fileName).join(','),
+        }));
       return { success: true, data: result };
     } catch (error) {
       return { success: false, error: (error as Error).message };

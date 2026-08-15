@@ -1,7 +1,7 @@
 import chokidar from 'chokidar';
 import { extname } from 'path';
 import { BrowserWindow } from 'electron';
-import { AUDIO_EXTENSIONS, MIDI_EXTENSIONS, ALL_SUPPORTED_EXTENSIONS } from '../../../shared/constants/audioFormats';
+import { MIDI_EXTENSIONS, ALL_SUPPORTED_EXTENSIONS } from '../../../shared/constants/audioFormats';
 import { IPC_CHANNELS } from '../../../shared/types/ipc.types';
 import { getDatabase } from './database';
 import { samples, watchedFolders } from '../../../drizzle/schema';
@@ -9,6 +9,7 @@ import { eq } from 'drizzle-orm';
 import { computeFileHash, enqueueMetadataJob } from './fileScanner';
 import type { FileInfo } from './fileScanner';
 import { stat } from 'fs/promises';
+import { canonicalizeLibraryPath } from './scanFileSystem';
 
 // 防抖延迟（毫秒）
 const DEBOUNCE_DELAY = 2000;
@@ -51,6 +52,7 @@ function scheduleDebounced(): void {
 }
 
 export async function handleFileAdd(filePath: string): Promise<void> {
+  filePath = canonicalizeLibraryPath(filePath);
   const ext = extname(filePath).toLowerCase();
   if (!ALL_SUPPORTED_EXTENSIONS.has(ext)) return;
 
@@ -70,7 +72,7 @@ export async function handleFileAdd(filePath: string): Promise<void> {
       fileName,
       fileSize: stats.size,
       fileHash: hash,
-      fileType: 'audio',
+      fileType: MIDI_EXTENSIONS.has(ext) ? 'midi' : 'audio',
       createdAt: new Date(),
       modifiedAt: stats.mtime,
       duration: 0,
@@ -97,6 +99,7 @@ export async function handleFileAdd(filePath: string): Promise<void> {
 }
 
 async function handleFileRemove(filePath: string): Promise<void> {
+  filePath = canonicalizeLibraryPath(filePath);
   const db = getDatabase();
   try {
     await db.delete(samples).where(eq(samples.filePath, filePath));
@@ -107,6 +110,7 @@ async function handleFileRemove(filePath: string): Promise<void> {
 }
 
 async function handleFileChange(filePath: string): Promise<void> {
+  filePath = canonicalizeLibraryPath(filePath);
   const ext = extname(filePath).toLowerCase();
   if (!ALL_SUPPORTED_EXTENSIONS.has(ext)) return;
 
@@ -198,6 +202,13 @@ export async function startWatchingAllFolders(): Promise<void> {
 }
 
 export function stopAllWatchers(): void {
+  if (debounceTimer) {
+    clearTimeout(debounceTimer);
+    debounceTimer = null;
+  }
+  pendingAdds.clear();
+  pendingChanges.clear();
+  pendingRemoves.clear();
   for (const [path, watcher] of watchers) {
     watcher.close();
     console.log(`Stopped watching: ${path}`);

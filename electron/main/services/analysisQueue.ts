@@ -6,7 +6,7 @@
  * processFile 目前是占位实现（模拟耗时），后续对接 Python sidecar 时替换。
  */
 
-import { getDatabase } from './database';
+import { getDatabase, getSqlite } from './database';
 import { samples, analysisSessions, analysisQueue, audioSegments } from '../../../drizzle/schema';
 import { eq, and, sql, inArray } from 'drizzle-orm';
 import { BrowserWindow } from 'electron';
@@ -75,6 +75,8 @@ export class AnalysisQueueManager {
   private isPaused = false;
   private startTime: number | null = null;
   private timerInterval: ReturnType<typeof setInterval> | null = null;
+  private queueLoopPromise: Promise<void> | null = null;
+  private recoveredInterruptedSessions = false;
 
   // ── 创建分析会话 ──────────────────────────────────────────────────
 
@@ -169,9 +171,7 @@ export class AnalysisQueueManager {
     }, 1000);
 
     // 3. 开始处理队列（不 await，让它在后台运行）
-    this.processQueue().catch((err) => {
-      console.error('[AnalysisQueue] processQueue 错误:', err);
-    });
+    this.runQueueInBackground();
   }
 
   // ── 暂停分析 ──────────────────────────────────────────────────────
@@ -208,8 +208,11 @@ export class AnalysisQueueManager {
   async resumeSession(sessionId: number): Promise<void> {
     const db = getDatabase();
 
-    // 防止重复启动
-    if (this.isRunning) {
+    const resumingCurrentSession =
+      this.isRunning && this.isPaused && this.currentSessionId === sessionId;
+
+    // 防止覆盖另一个正在运行的会话
+    if (this.isRunning && !resumingCurrentSession) {
       throw new Error('已有分析任务正在运行，请先暂停或取消当前任务');
     }
 
@@ -240,20 +243,20 @@ export class AnalysisQueueManager {
     this.startTime = Date.now() - (session.elapsedTimeMs ?? 0);
 
     // 启动定时器
-    this.timerInterval = setInterval(() => {
-      if (this.startTime && this.currentSessionId && !this.isPaused) {
-        const elapsed = Date.now() - this.startTime;
-        db.update(analysisSessions)
-          .set({ elapsedTimeMs: elapsed, updatedAt: new Date() })
-          .where(eq(analysisSessions.id, this.currentSessionId))
-          .run();
-      }
-    }, 1000);
+    if (!this.timerInterval) {
+      this.timerInterval = setInterval(() => {
+        if (this.startTime && this.currentSessionId && !this.isPaused) {
+          const elapsed = Date.now() - this.startTime;
+          db.update(analysisSessions)
+            .set({ elapsedTimeMs: elapsed, updatedAt: new Date() })
+            .where(eq(analysisSessions.id, this.currentSessionId))
+            .run();
+        }
+      }, 1000);
+    }
 
     // 从 pending 的队列项继续处理
-    this.processQueue().catch((err) => {
-      console.error('[AnalysisQueue] processQueue 错误:', err);
-    });
+    this.runQueueInBackground();
   }
 
   // ── 取消分析 ──────────────────────────────────────────────────────
@@ -367,6 +370,27 @@ export class AnalysisQueueManager {
   }>> {
     const db = getDatabase();
 
+    // A process exit can leave durable rows in running/processing. Recover
+    // them once per launch so the normal Resume action can claim them again.
+    if (!this.recoveredInterruptedSessions && !this.isRunning) {
+      const sqlite = getSqlite();
+      sqlite.transaction(() => {
+        sqlite.prepare(`
+          UPDATE analysis_queue
+          SET status = 'pending', started_at = NULL
+          WHERE status = 'processing'
+            AND session_id IN (
+              SELECT id FROM analysis_sessions WHERE status IN ('running', 'paused')
+            )
+        `).run();
+        sqlite.prepare(`
+          UPDATE analysis_sessions SET status = 'paused', updated_at = unixepoch()
+          WHERE status = 'running'
+        `).run();
+      })();
+      this.recoveredInterruptedSessions = true;
+    }
+
     const rows = await db
       .select({
         id: analysisSessions.id,
@@ -458,64 +482,48 @@ export class AnalysisQueueManager {
       .where(eq(analysisSessions.id, sessionId))
       .limit(1);
 
-    if (!session) return;
+    if (!session) throw new Error(`分析会话 ${sessionId} 不存在`);
 
     const config: AnalysisConfig = JSON.parse(session.config);
     const concurrency = Math.min(Math.max(config.concurrency, 1), 4);
 
-    // 并发处理池
-    const running: Promise<void>[] = [];
+    // Set 会在任务 settled 时立即移除，避免 Promise.allSettled 把并发退化成批处理。
+    const running = new Set<Promise<void>>();
 
     while (this.isRunning && !this.isPaused) {
-      // 查找下一个 pending 的队列项
-      const [nextItem] = await db
-        .select()
-        .from(analysisQueue)
-        .where(
-          and(
-            eq(analysisQueue.sessionId, sessionId),
-            eq(analysisQueue.status, 'pending'),
-          ),
-        )
-        .limit(1);
-
-      // 没有待处理的项，退出循环
-      if (!nextItem) break;
-
-      // 控制并发数：如果池已满，等待一个完成
-      if (running.length >= concurrency) {
+      if (running.size >= concurrency) {
         await Promise.race(running);
-        // 移除已完成的 promise
-        for (let i = running.length - 1; i >= 0; i--) {
-          // 使用 Promise.race 的技巧：给每个 promise 附加一个 settled 标记
-          // 这里简单处理：检查队列中是否还有 processing 项
-        }
-        // 清理已完成的 promise
-        const settled = await Promise.allSettled(running);
-        running.length = 0;
-        for (const result of settled) {
-          if (result.status === 'fulfilled') {
-            // 已完成
-          } else {
-            console.error('[AnalysisQueue] 任务执行异常:', result.reason);
-          }
-        }
+        continue;
       }
 
-      // 启动新任务
-      const task = this.processFile(nextItem.id).then(() => {
-        // 从 running 数组中移除
-        const idx = running.indexOf(task);
-        if (idx !== -1) running.splice(idx, 1);
-      });
-      running.push(task);
+      // 领取与置为 processing 在同一个同步事务内完成，杜绝并发重复领取。
+      const queueItemId = this.claimNextQueueItem(sessionId);
+      if (queueItemId === null) break;
+
+      const task = this.processFile(queueItemId)
+        .catch((error) => {
+          console.error('[AnalysisQueue] 任务执行异常:', error);
+        })
+        .finally(() => running.delete(task));
+      running.add(task);
     }
 
     // 等待所有正在处理的任务完成
     await Promise.allSettled(running);
 
     // 如果不是因为暂停而退出，说明队列处理完毕
-    if (!this.isPaused && this.isRunning) {
+    const remaining = getSqlite().prepare(`
+      SELECT COUNT(*) AS count
+      FROM analysis_queue
+      WHERE session_id = ? AND status IN ('pending', 'processing')
+    `).get(sessionId) as { count: number };
+
+    if (
+      !this.isPaused &&
+      this.isRunning &&
+      this.currentSessionId === sessionId &&
+      remaining.count === 0
+    ) {
       await db
         .update(analysisSessions)
         .set({
@@ -534,6 +542,82 @@ export class AnalysisQueueManager {
       this.currentSessionId = null;
       this.startTime = null;
     }
+  }
+
+  /** Persist a resumable state synchronously before the Electron process exits. */
+  shutdown(): void {
+    const sessionId = this.currentSessionId;
+    this.isRunning = false;
+    this.isPaused = true;
+    this.stopTimer();
+    if (!sessionId) return;
+
+    try {
+      const sqlite = getSqlite();
+      sqlite.transaction(() => {
+        sqlite.prepare(`
+          UPDATE analysis_queue SET status = 'pending', started_at = NULL
+          WHERE session_id = ? AND status = 'processing'
+        `).run(sessionId);
+        sqlite.prepare(`
+          UPDATE analysis_sessions SET status = 'paused', updated_at = unixepoch()
+          WHERE id = ? AND status = 'running'
+        `).run(sessionId);
+      })();
+    } catch (error) {
+      console.warn('[AnalysisQueue] Failed to persist shutdown state:', error);
+    }
+
+    this.currentSessionId = null;
+    this.startTime = null;
+  }
+
+  private claimNextQueueItem(sessionId: number): number | null {
+    const sqlite = getSqlite();
+    const claim = sqlite.transaction((targetSessionId: number) => {
+      const row = sqlite.prepare(`
+        SELECT id
+        FROM analysis_queue
+        WHERE session_id = ? AND status = 'pending'
+        ORDER BY id
+        LIMIT 1
+      `).get(targetSessionId) as { id: number } | undefined;
+      if (!row) return null;
+
+      const result = sqlite.prepare(`
+        UPDATE analysis_queue
+        SET status = 'processing', started_at = unixepoch()
+        WHERE id = ? AND status = 'pending'
+      `).run(row.id);
+      return result.changes === 1 ? row.id : null;
+    });
+    return claim(sessionId);
+  }
+
+  private runQueueInBackground(): void {
+    if (this.queueLoopPromise) return;
+
+    let failed = false;
+    this.queueLoopPromise = this.processQueue()
+      .catch(async (error) => {
+        failed = true;
+        console.error('[AnalysisQueue] processQueue 错误:', error);
+        const sessionId = this.currentSessionId;
+        if (sessionId) {
+          this.isPaused = true;
+          await getDatabase()
+            .update(analysisSessions)
+            .set({ status: 'paused', updatedAt: new Date() })
+            .where(eq(analysisSessions.id, sessionId));
+        }
+      })
+      .finally(() => {
+        this.queueLoopPromise = null;
+        // 如果恢复动作恰好发生在旧循环退出期间，继续处理剩余队列。
+        if (!failed && this.isRunning && !this.isPaused && this.currentSessionId) {
+          this.runQueueInBackground();
+        }
+      });
   }
 
   // ── 内部：处理单个文件 ────────────────────────────────────────────
@@ -579,13 +663,7 @@ export class AnalysisQueueManager {
         return;
       }
 
-      // 3. 标记为 processing
-      await db
-        .update(analysisQueue)
-        .set({ status: 'processing', startedAt: new Date() })
-        .where(eq(analysisQueue.id, queueItemId));
-
-      // 4. 根据配置执行分析（目前先模拟耗时）
+      // 3. 根据配置执行分析
       const sessionRow = await db
         .select()
         .from(analysisSessions)
@@ -688,7 +766,16 @@ export class AnalysisQueueManager {
 
       durationMs = Date.now() - taskStart;
 
-      // 5. 更新 queue item 状态为 completed
+      // 取消会话后在途分析可以自然结束，但不得覆盖 cancelled 状态或进度。
+      if (!this.isRunning || this.currentSessionId !== sessionId) {
+        await db
+          .update(analysisQueue)
+          .set({ status: 'skipped', completedAt: new Date(), durationMs })
+          .where(eq(analysisQueue.id, queueItemId));
+        return;
+      }
+
+      // 4. 更新 queue item 状态为 completed
       await db
         .update(analysisQueue)
         .set({
@@ -713,6 +800,14 @@ export class AnalysisQueueManager {
       const errorMessage = (error as Error).message ?? String(error);
 
       console.error(`[AnalysisQueue] 处理文件失败 (queueItemId=${queueItemId}):`, errorMessage);
+
+      if (!this.isRunning || this.currentSessionId !== sessionId) {
+        await db
+          .update(analysisQueue)
+          .set({ status: 'skipped', errorMessage, completedAt: new Date() })
+          .where(eq(analysisQueue.id, queueItemId));
+        return;
+      }
 
       // 更新 queue item 状态为 failed
       await db

@@ -25,9 +25,8 @@ electron-dist
 *.sln
 *.sw?
 
-#lockfile
+# Dependency lockfile (pnpm is the declared package manager)
 package-lock.json
-pnpm-lock.yaml
 yarn.lock
 /test-results/
 /playwright-report/
@@ -44,7 +43,6 @@ test/screenshots
 *.tar
 *.tar.gz
 *.blockmap
-pnpm-workspace.yaml
 
 # 审计和文档草稿
 .trae/documents/

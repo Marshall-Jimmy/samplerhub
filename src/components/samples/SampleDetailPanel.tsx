@@ -290,7 +290,16 @@ const DetailContent: React.FC<DetailContentProps> = ({
       <button onClick={() => { navigator.clipboard.writeText(sample.filePath); }} className={s.quickBtn}>
         <CopyOutlined style={{ fontSize: 12 }} /> {t('detail.copyPath')}
       </button>
-      <button onClick={() => ipcClient.startDrag([sample.filePath])} className={s.quickBtn}>
+      <button
+        type="button"
+        draggable={sample.fileType === 'audio'}
+        onDragStart={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (sample.fileType === 'audio') ipcClient.startSampleDrag([sample.id]);
+        }}
+        className={s.quickBtn}
+      >
         <DesktopOutlined style={{ fontSize: 12 }} /> {t('detail.dragToDAW')}
       </button>
     </div>

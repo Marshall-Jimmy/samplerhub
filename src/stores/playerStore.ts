@@ -19,6 +19,7 @@ let currentBlobUrl: string | null = null;
 let preloadedHowl: Howl.Howl | null = null;
 let preloadedBlobUrl: string | null = null;
 let preloadedId: number | null = null;
+let preloadGeneration = 0;
 // 播放代数，用于防止旧 Howl 的异步回调覆盖新播放状态
 let playGeneration = 0;
 
@@ -30,6 +31,45 @@ function cleanupHowl(howl: Howl.Howl | null, blobUrl: string | null): void {
   if (blobUrl) {
     URL.revokeObjectURL(blobUrl);
   }
+}
+
+function clearPreload(): void {
+  preloadGeneration++;
+  cleanupHowl(preloadedHowl, preloadedBlobUrl);
+  preloadedHowl = null;
+  preloadedBlobUrl = null;
+  preloadedId = null;
+}
+
+function preloadItem(item: PlayableItem, volume: number, playbackRate: number): void {
+  clearPreload();
+  const generation = preloadGeneration;
+  preloadedId = item.id;
+
+  void ipcClient.getAudioBuffer(item.filePath).then((arrayBuffer) => {
+    if (generation !== preloadGeneration || preloadedId !== item.id) return;
+    const blob = new Blob([arrayBuffer], { type: 'audio/wav' });
+    const blobUrl = URL.createObjectURL(blob);
+    const howl = new Howl.Howl({
+      src: [blobUrl],
+      format: ['wav', 'mp3', 'flac'],
+      volume,
+      rate: playbackRate,
+      html5: true,
+      preload: true,
+    });
+
+    if (generation !== preloadGeneration || preloadedId !== item.id) {
+      cleanupHowl(howl, blobUrl);
+      return;
+    }
+    preloadedHowl = howl;
+    preloadedBlobUrl = blobUrl;
+  }).catch(() => {
+    if (generation === preloadGeneration && preloadedId === item.id) {
+      preloadedId = null;
+    }
+  });
 }
 
 interface PlayerState {
@@ -121,6 +161,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       cleanupHowl(currentHowl, currentBlobUrl);
       currentHowl = null;
       currentBlobUrl = null;
+      clearPreload();
       midiStop();
 
       // 清除 A-B 循环
@@ -272,24 +313,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     if (currentIdx >= 0 && currentIdx + 1 < playQueue.length) {
       const nextItem = playQueue[currentIdx + 1];
       if (preloadedId !== nextItem.id) {
-        cleanupHowl(preloadedHowl, preloadedBlobUrl);
-        preloadedHowl = null;
-        preloadedBlobUrl = null;
-        preloadedId = nextItem.id;
-        // 预加载也使用 IPC 读取，避免 file:// URL 特殊字符问题
-        ipcClient.getAudioBuffer(nextItem.filePath).then((arrayBuffer) => {
-          const blob = new Blob([arrayBuffer], { type: 'audio/wav' });
-          const blobUrl = URL.createObjectURL(blob);
-          preloadedHowl = new Howl.Howl({
-            src: [blobUrl],
-            format: ['wav', 'mp3', 'flac'],
-            volume: get().volume,
-            rate: playbackRate,
-            html5: true,
-            preload: true,
-          });
-          preloadedBlobUrl = blobUrl;
-        }).catch(() => {});
+        preloadItem(nextItem, get().volume, playbackRate);
       }
     }
   },
@@ -315,10 +339,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     cleanupHowl(currentHowl, currentBlobUrl);
     currentHowl = null;
     currentBlobUrl = null;
-    cleanupHowl(preloadedHowl, preloadedBlobUrl);
-    preloadedHowl = null;
-    preloadedBlobUrl = null;
-    preloadedId = null;
+    clearPreload();
     set({ isPlaying: false, currentTime: 0, progress: 0, loopStart: null, loopEnd: null, isABLooping: false });
     if (typeof window !== 'undefined') {
       (window as any).__modEventBus?.emit('player:stop', {});
@@ -397,6 +418,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         cleanupHowl(currentHowl, currentBlobUrl);
         currentHowl = cached;
         currentBlobUrl = cachedBlobUrl;
+        preloadGeneration++;
         preloadedHowl = null;
         preloadedBlobUrl = null;
         preloadedId = null;
@@ -423,21 +445,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         // 预加载下下个
         if (nextIndex + 1 < playQueue.length) {
           const nextNextItem = playQueue[nextIndex + 1];
-          preloadedId = nextNextItem.id;
-          // 预加载也使用 IPC 读取，避免 file:// URL 特殊字符问题
-          ipcClient.getAudioBuffer(nextNextItem.filePath).then((arrayBuffer) => {
-            const blob = new Blob([arrayBuffer], { type: 'audio/wav' });
-            const blobUrl = URL.createObjectURL(blob);
-            preloadedHowl = new Howl.Howl({
-              src: [blobUrl],
-              format: ['wav', 'mp3', 'flac'],
-              volume: get().volume,
-              rate: get().playbackRate,
-              html5: true,
-              preload: true,
-            });
-            preloadedBlobUrl = blobUrl;
-          }).catch(() => {});
+          preloadItem(nextNextItem, get().volume, get().playbackRate);
         }
       } else {
         get().play(next.id, next.filePath, next.fileName);

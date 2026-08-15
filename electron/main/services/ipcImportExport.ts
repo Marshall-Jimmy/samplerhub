@@ -14,6 +14,49 @@ import { generateBatchRename } from './namingEngine';
 import { exportToEngine, generateGodotRegistry } from './engineExporter';
 import type { ExportEngine } from './engineExporter';
 import { runQACheck, getQASummary, QA_RULES } from './deliveryChecker';
+import {
+  buildNativeDragFileFields,
+  parseDragStartPayload,
+  validateDragSampleRows,
+  type DragSampleRow,
+} from './nativeDrag';
+
+const FALLBACK_DRAG_ICON_DATA_URL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAACTSURBVHgBpZKBCYAgEEV/TeAIjuIIbdQIuUGt0CS1gW1iZ2jIVaTnhw+Cvs8/OYDJA4Y8kR3ZR2/kmazxJbpUEfQ/Dm/UG7wVwHkjlQdMFfDdJMFaACebnjJGyDWgcnZu1/lrCrl6NCoEHJBrDwEr5NrT6ko/UV8xdLAC2N49mlc5CylpYh8wCwqrvbBGLoKGvz8Bfq0QPWEUo/EAAAAASUVORK5CYII=';
+const approvedDownloadDirectories = new Set<string>();
+const DOWNLOAD_AUDIO_EXTENSIONS = new Set(['.wav', '.mp3', '.flac', '.aif', '.aiff', '.ogg', '.m4a']);
+
+function comparablePath(value: string): string {
+  const resolved = path.resolve(value);
+  return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
+}
+
+function isWithinDirectory(candidate: string, directory: string): boolean {
+  const relative = path.relative(comparablePath(directory), comparablePath(candidate));
+  return relative === '' || (!relative.startsWith('..' + path.sep) && relative !== '..' && !path.isAbsolute(relative));
+}
+
+function createDragIcon(): Electron.NativeImage | null {
+  const iconCandidates = [
+    process.env.VITE_PUBLIC ? path.join(process.env.VITE_PUBLIC, 'appIcon_256.png') : '',
+    path.join(process.resourcesPath, 'icon.png'),
+  ].filter(Boolean);
+
+  for (const iconPath of iconCandidates) {
+    try {
+      const icon = nativeImage.createFromPath(iconPath);
+      if (!icon.isEmpty()) return icon.resize({ width: 32, height: 32 });
+    } catch {
+      // Fall through to the embedded icon.
+    }
+  }
+
+  try {
+    const fallback = nativeImage.createFromDataURL(FALLBACK_DRAG_ICON_DATA_URL);
+    return fallback.isEmpty() ? null : fallback;
+  } catch {
+    return null;
+  }
+}
 
 export function registerImportExportHandlers(ctx: IpcContext): void {
   const { db, sqlite } = ctx;
@@ -64,55 +107,31 @@ export function registerImportExportHandlers(ctx: IpcContext): void {
     }
   });
 
-  // DAW 拖拽：渲染进程 dragstart 时异步通知，主进程启动原生文件拖拽
-  // 支持单文件和多文件拖拽
-  // 注意：startDrag 必须包含 icon 属性，否则某些 DAW（如 Studio One）会拒绝接受拖放
-  ipcMain.on('drag:start', (event, data: { filePath: string; name: string; filePaths?: string[] }) => {
-    // 创建一个 16x16 的半透明紫色图标作为拖拽图标
-    const dragIcon = nativeImage.createEmpty();
+  // DAW 拖拽：renderer 只发送 sample ID，路径始终由主进程从数据库解析。
+  // startDrag 必须在 dragstart 对应的 IPC 回调中立即调用，不能延迟到后续任务。
+  ipcMain.on('drag:start', (event, payload: unknown) => {
     try {
-      const iconSize = 16;
-      const canvas = `data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAABGdBTUEAALGPC/xhBQAAAAlwSFlzAAAOwQAADsEBuJFr7QAAABl0RVh0U29mdHdhcmUAcGFpbnQubmV0IDQuMC41ZYBSAAAAH0lEQVQ4T2NgGAWjYBSMglEwCkbBSAcCBgYGFB4DgwgDIwIAAA5wmB3rmXRkAAAAASUVORK5CYII=`;
-      const parsed = nativeImage.createFromDataURL(canvas);
-      if (!parsed.isEmpty()) {
-        dragIcon.addRepresentation({ image: parsed.toPNG() } as any);
+      const { sampleIds } = parseDragStartPayload(payload);
+      const placeholders = sampleIds.map(() => '?').join(',');
+      const rows = sqlite.prepare(`
+        SELECT id, file_path AS filePath, file_type AS fileType
+        FROM samples
+        WHERE id IN (${placeholders})
+      `).all(...sampleIds) as DragSampleRow[];
+      const filePaths = validateDragSampleRows(sampleIds, rows);
+      const dragIcon = createDragIcon();
+      if (!dragIcon) {
+        throw new Error('Unable to create a non-empty native drag icon');
       }
-    } catch { /* ignore */ }
+      if (event.sender.isDestroyed()) return;
 
-    // 多文件模式
-    if (data.filePaths && data.filePaths.length > 0) {
-      const validPaths = data.filePaths.filter(p => p && fs.existsSync(p));
-      if (validPaths.length === 0) return;
-
-      setImmediate(() => {
-        try {
-          (event.sender as any).startDrag({
-            file: validPaths.length === 1 ? validPaths[0] : validPaths,
-            icon: dragIcon,
-          });
-        } catch (err) {
-          console.error('startDrag (multi) failed:', err);
-        }
+      event.sender.startDrag({
+        ...buildNativeDragFileFields(filePaths),
+        icon: dragIcon,
       });
-      return;
+    } catch (error) {
+      console.error('Native sample drag failed:', error);
     }
-
-    // 单文件模式
-    const filePath = data.filePath;
-    if (!filePath || !fs.existsSync(filePath)) {
-      return;
-    }
-
-    setImmediate(() => {
-      try {
-        event.sender.startDrag({
-          file: filePath,
-          icon: dragIcon,
-        });
-      } catch (err) {
-        console.error('startDrag failed:', err);
-      }
-    });
   });
 
   // 在文件管理器中显示文件
@@ -156,7 +175,13 @@ export function registerImportExportHandlers(ctx: IpcContext): void {
       const sampleId = validatePositiveInt(data?.sampleId, 'sampleId');
       const newName = validateString(data?.newName, 'newName');
       // Prevent path traversal in new filename
-      if (newName.includes('/') || newName.includes('\\') || newName.includes('\0')) {
+      if (
+        newName === '.' ||
+        newName === '..' ||
+        /[\x00-\x1f<>:"/\\|?*]/.test(newName) ||
+        newName.endsWith('.') ||
+        newName.endsWith(' ')
+      ) {
         return { success: false, error: 'Invalid filename: must not contain path separators' };
       }
       const row = sqlite.prepare('SELECT file_path, file_name FROM samples WHERE id = ?').get(sampleId) as { file_path: string; file_name: string } | undefined;
@@ -173,8 +198,19 @@ export function registerImportExportHandlers(ctx: IpcContext): void {
       // 重命名文件
       fs.renameSync(row.file_path, newPath);
 
-      // 更新数据库
-      sqlite.prepare('UPDATE samples SET file_path = ?, file_name = ? WHERE id = ?').run(newPath, newName, sampleId);
+      // 更新数据库；失败时补偿性恢复文件名，避免磁盘和数据库永久脱节。
+      try {
+        sqlite.prepare('UPDATE samples SET file_path = ?, file_name = ? WHERE id = ?').run(newPath, newName, sampleId);
+      } catch (databaseError) {
+        try {
+          fs.renameSync(newPath, row.file_path);
+        } catch (rollbackError) {
+          throw new Error(
+            `Database rename failed and file rollback also failed: ${(databaseError as Error).message}; ${(rollbackError as Error).message}`,
+          );
+        }
+        throw databaseError;
+      }
 
       return { success: true, data: { newPath } };
     } catch (error) {
@@ -320,10 +356,22 @@ export function registerImportExportHandlers(ctx: IpcContext): void {
     saveDir?: string;
   }) => {
     try {
+      const downloadUrl = new URL(validateString(data?.url, 'url'));
+      if (downloadUrl.protocol !== 'https:' && downloadUrl.protocol !== 'http:') {
+        return { success: false, error: 'Only HTTP(S) download URLs are allowed' };
+      }
+      const fileName = validateString(data?.fileName, 'fileName');
+      if (path.basename(fileName) !== fileName || fileName === '.' || fileName === '..') {
+        return { success: false, error: 'Invalid download filename' };
+      }
+      if (!DOWNLOAD_AUDIO_EXTENSIONS.has(path.extname(fileName).toLowerCase())) {
+        return { success: false, error: 'Unsupported audio file extension' };
+      }
+
       // 选择保存目录：优先使用用户指定的，否则用第一个监视文件夹
       let saveDir = data.saveDir || '';
+      const folders = sqlite.prepare('SELECT path FROM watched_folders').all() as { path: string }[];
       if (!saveDir) {
-        const folders = sqlite.prepare('SELECT path FROM watched_folders LIMIT 1').all() as { path: string }[];
         saveDir = folders.length > 0 ? folders[0].path : '';
       }
 
@@ -331,28 +379,49 @@ export function registerImportExportHandlers(ctx: IpcContext): void {
         return { success: false, error: '没有可用的保存目录，请先添加文件夹或配置下载路径' };
       }
 
-      // 确保目录存在
-      if (!fs.existsSync(saveDir)) {
-        fs.mkdirSync(saveDir, { recursive: true });
+      const resolvedSaveDir = path.resolve(saveDir);
+      const approvedByDialog = approvedDownloadDirectories.has(comparablePath(resolvedSaveDir));
+      const insideWatchedFolder = folders.some((folder) => isWithinDirectory(resolvedSaveDir, folder.path));
+      if (!approvedByDialog && !insideWatchedFolder) {
+        return { success: false, error: 'Download directory has not been approved' };
       }
 
-      const targetPath = path.join(saveDir, data.fileName);
+      // 确保目录存在
+      if (!fs.existsSync(saveDir)) {
+        fs.mkdirSync(resolvedSaveDir, { recursive: true });
+      }
+      const realSaveDir = fs.realpathSync(resolvedSaveDir);
+      const insideRealWatchedFolder = folders.some((folder) => {
+        try {
+          return isWithinDirectory(realSaveDir, fs.realpathSync(folder.path));
+        } catch {
+          return false;
+        }
+      });
+      if (!approvedByDialog && !insideRealWatchedFolder) {
+        return { success: false, error: 'Resolved download directory is outside the sample library' };
+      }
+
+      const targetPath = path.resolve(realSaveDir, fileName);
+      if (!isWithinDirectory(targetPath, realSaveDir)) {
+        return { success: false, error: 'Download path escapes the selected directory' };
+      }
 
       // 检查文件是否已存在
       if (fs.existsSync(targetPath)) {
         return { success: false, error: '文件已存在' };
       }
 
-      await downloadOnlineSample(data.url, targetPath, data.headers);
+      await downloadOnlineSample(downloadUrl.toString(), targetPath, data.headers);
 
       // 触发重新扫描该文件夹
       try {
-        await doScan(saveDir);
+        await doScan(realSaveDir);
       } catch (err) {
         console.error('[Download] Rescan failed:', err);
       }
 
-      return { success: true, data: { path: targetPath, saveDir } };
+      return { success: true, data: { path: targetPath, saveDir: realSaveDir } };
     } catch (error) {
       return { success: false, error: (error as Error).message };
     }
@@ -373,7 +442,9 @@ export function registerImportExportHandlers(ctx: IpcContext): void {
     if (result.canceled || result.filePaths.length === 0) {
       return { success: false, error: '用户取消' };
     }
-    return { success: true, data: { folder: result.filePaths[0] } };
+    const selectedDirectory = path.resolve(result.filePaths[0]);
+    approvedDownloadDirectories.add(comparablePath(selectedDirectory));
+    return { success: true, data: { folder: selectedDirectory } };
   });
 
   // ===== 在线采样预览缓存 =====
@@ -496,7 +567,56 @@ export function registerImportExportHandlers(ctx: IpcContext): void {
 
       const fs = await import('fs/promises');
       await fs.writeFile(result.filePath, Buffer.from(midi.toArray()));
-      return { success: true, data: result.filePath };
+      return { success: true, data: { filePath: result.filePath } };
+    } catch (error) {
+      return { success: false, error: (error as Error).message };
+    }
+  });
+
+  // 音序器 pattern 文件只通过主进程文件对话框读写，避免 renderer 获得任意文件权限。
+  ipcMain.handle(IPC_CHANNELS.SAVE_SEQUENCER_PATTERN, async (_event, data: { patternJson?: unknown }) => {
+    try {
+      const patternJson = validateString(data?.patternJson, 'patternJson');
+      if (Buffer.byteLength(patternJson, 'utf8') > 10 * 1024 * 1024) {
+        return { success: false, error: 'Pattern file exceeds the 10 MB limit' };
+      }
+      JSON.parse(patternJson);
+
+      const result = await dialog.showSaveDialog({
+        title: 'Save Pattern',
+        defaultPath: 'pattern.json',
+        filters: [{ name: 'JSON', extensions: ['json'] }],
+      });
+      if (result.canceled || !result.filePath) {
+        return { success: true, data: null };
+      }
+
+      await fs.promises.writeFile(result.filePath, patternJson, { encoding: 'utf8', flag: 'w' });
+      return { success: true, data: { filePath: result.filePath } };
+    } catch (error) {
+      return { success: false, error: (error as Error).message };
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.LOAD_SEQUENCER_PATTERN, async () => {
+    try {
+      const result = await dialog.showOpenDialog({
+        title: 'Load Pattern',
+        filters: [{ name: 'JSON', extensions: ['json'] }],
+        properties: ['openFile'],
+      });
+      if (result.canceled || result.filePaths.length === 0) {
+        return { success: true, data: null };
+      }
+
+      const filePath = result.filePaths[0];
+      const stat = await fs.promises.stat(filePath);
+      if (!stat.isFile() || stat.size > 10 * 1024 * 1024) {
+        return { success: false, error: 'Pattern file is invalid or exceeds the 10 MB limit' };
+      }
+      const patternJson = await fs.promises.readFile(filePath, 'utf8');
+      JSON.parse(patternJson);
+      return { success: true, data: { patternJson, filePath } };
     } catch (error) {
       return { success: false, error: (error as Error).message };
     }

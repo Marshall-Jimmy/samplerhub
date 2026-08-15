@@ -158,6 +158,11 @@ class AnalyzerSidecarManager {
 
     } catch (err) {
       console.error('[Sidecar] 启动失败:', err);
+      // Startup timeouts/errors must not leave an orphan Python process.
+      if (this.process) {
+        try { this.process.kill('SIGTERM'); } catch {}
+        this.process = null;
+      }
       this.isAvailable = false;
       return false;
     } finally {
@@ -192,6 +197,20 @@ class AnalyzerSidecarManager {
       this.process = null;
     }
 
+    this.isAvailable = false;
+  }
+
+  /** Synchronous best-effort termination for Electron's will-quit event. */
+  stopImmediately(): void {
+    if (this.healthCheckTimer) {
+      clearInterval(this.healthCheckTimer);
+      this.healthCheckTimer = null;
+    }
+    if (this.process) {
+      try { this.process.kill('SIGTERM'); } catch {}
+      this.process = null;
+    }
+    this.isStarting = false;
     this.isAvailable = false;
   }
 
