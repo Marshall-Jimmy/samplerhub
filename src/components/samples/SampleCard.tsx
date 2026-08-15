@@ -42,6 +42,7 @@ interface SampleCardProps {
   onExport?: (id: number) => void;
   onSelect?: (id: number, index: number, e: React.MouseEvent) => void;
   onContextMenu?: (e: React.MouseEvent, id: number) => void;
+  onNativeDragStart?: (id: number) => void;
   searchQuery?: string;
 }
 
@@ -67,6 +68,7 @@ const SampleCard: React.FC<SampleCardProps> = ({
   onFavorite,
   onSelect,
   onContextMenu,
+  onNativeDragStart,
   searchQuery,
 }) => {
   const { t } = useTranslation();
@@ -180,58 +182,17 @@ const SampleCard: React.FC<SampleCardProps> = ({
   }, [id, onPlay]);
 
   const handleDragStart = useCallback((e: React.DragEvent) => {
-    if (!filePath) return;
-    e.dataTransfer.setData('text/x-file-path', filePath);
-    e.dataTransfer.effectAllowed = 'copy';
-    // Custom drag image with waveform thumbnail
-    const canvas = canvasRef.current;
-    if (canvas) {
-      try {
-        const thumbCanvas = document.createElement('canvas');
-        thumbCanvas.width = 180;
-        thumbCanvas.height = 52;
-        // Must append to DOM for setDragImage to work reliably in Electron
-        thumbCanvas.style.position = 'fixed';
-        thumbCanvas.style.top = '-9999px';
-        thumbCanvas.style.left = '-9999px';
-        document.body.appendChild(thumbCanvas);
-        const ctx = thumbCanvas.getContext('2d');
-        if (ctx) {
-          // Dark background with rounded corners
-          ctx.fillStyle = '#1E1E2E';
-          ctx.beginPath();
-          ctx.roundRect(0, 0, 180, 52, 6);
-          ctx.fill();
-          // Category accent bar at top
-          ctx.fillStyle = catColor;
-          ctx.beginPath();
-          ctx.roundRect(0, 0, 180, 3, [6, 6, 0, 0]);
-          ctx.fill();
-          // Waveform
-          ctx.drawImage(canvas, 6, 8, 168, 28);
-          // File name label
-          ctx.fillStyle = 'rgba(255,255,255,0.8)';
-          ctx.font = '10px system-ui, sans-serif';
-          const displayName = name.replace(/\.[^/.]+$/, '');
-          ctx.fillText(displayName.length > 24 ? displayName.slice(0, 24) + '...' : displayName, 6, 47);
-          e.dataTransfer.setDragImage(thumbCanvas, 90, 26);
-        }
-        // Clean up after drag starts
-        requestAnimationFrame(() => {
-          if (thumbCanvas.parentNode) document.body.removeChild(thumbCanvas);
-        });
-      } catch {
-        // Fallback to default drag image
-      }
-    }
-    window.electronAPI.send('drag:start', { filePath, name });
-  }, [filePath, name, catColor]);
+    e.preventDefault();
+    e.stopPropagation();
+    if (!filePath || fileType !== 'audio') return;
+    onNativeDragStart?.(id);
+  }, [filePath, fileType, id, onNativeDragStart]);
 
   const displayName = name.replace(/\.[^/.]+$/, '');
 
   return (
     <div
-      draggable={!!filePath}
+      draggable={!!filePath && fileType === 'audio' && !!onNativeDragStart}
       onDragStart={handleDragStart}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => {

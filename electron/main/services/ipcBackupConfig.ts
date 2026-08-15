@@ -4,14 +4,18 @@ import type { IpcContext } from './ipcTypes';
 import fs from 'node:fs';
 import path from 'node:path';
 import { createBackup, restoreBackup, listBackups } from './backupService';
+import { scheduleDatabaseRestart } from './database';
 
 export function registerBackupConfigHandlers(ctx: IpcContext): void {
   // ===== 备份/恢复 =====
 
   ipcMain.handle(IPC_CHANNELS.BACKUP_CREATE, async () => {
     try {
-      const result = createBackup();
-      return result;
+      const result = await createBackup();
+      if (!result.success) {
+        return { success: false, error: result.error ?? 'Backup failed' };
+      }
+      return { success: true, data: result };
     } catch (error) {
       return { success: false, error: (error as Error).message };
     }
@@ -19,8 +23,16 @@ export function registerBackupConfigHandlers(ctx: IpcContext): void {
 
   ipcMain.handle(IPC_CHANNELS.BACKUP_RESTORE, async (_event, data: { fileName: string }) => {
     try {
-      const result = restoreBackup(data.fileName);
-      return result;
+      const result = await restoreBackup(data?.fileName ?? '');
+      if (result.requiresRestart) {
+        // 先让 invoke 响应有机会返回，再退出并重启。旧 handler 捕获的连接
+        // 已关闭，因此不能在当前进程继续提供数据库操作。
+        scheduleDatabaseRestart();
+      }
+      if (!result.success) {
+        return { success: false, error: result.error ?? 'Restore failed' };
+      }
+      return { success: true, data: result };
     } catch (error) {
       return { success: false, error: (error as Error).message };
     }

@@ -4,6 +4,7 @@ import { app } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
 
 const require = createRequire(import.meta.url);
 
@@ -20,8 +21,14 @@ var db: ReturnType<typeof drizzle> | null = null;
 var sqlite: any = null;
 
 var isDatabaseInitialized = false;
+var databaseInitPromise: Promise<void> | null = null;
+var databaseUnavailableReason: string | null = null;
+var backupQueue: Promise<void> = Promise.resolve();
 
 export function getDatabase() {
+  if (databaseUnavailableReason) {
+    throw new Error(`Database is unavailable until the application restarts: ${databaseUnavailableReason}`);
+  }
   if (!db) {
     if (!Database) {
       throw new Error(`Database module not available: ${dbLoadError}`);
@@ -39,10 +46,23 @@ export function getDatabase() {
 /**
  * 重置数据库连接（用于备份恢复后）
  */
-export function resetDatabaseConnection() {
-  try { sqlite?.close() } catch {}
+export function resetDatabaseConnection(requiresRestartReason?: string) {
+  if (sqlite) sqlite.close();
   db = null;
   sqlite = null;
+  isDatabaseInitialized = false;
+  databaseInitPromise = null;
+  databaseUnavailableReason = requiresRestartReason ?? null;
+}
+
+/** Close SQLite during normal process shutdown. */
+export function closeDatabase(): void {
+  stopAutoBackup();
+  if (sqlite?.open) sqlite.close();
+  sqlite = null;
+  db = null;
+  isDatabaseInitialized = false;
+  databaseInitPromise = null;
 }
 
 export function getSqlite() {
@@ -57,9 +77,53 @@ export function getDbPath(): string {
   return path.join(app.getPath('userData'), 'samplerhub.db');
 }
 
+/** 打开候选数据库并执行完整性检查，不改变当前活动连接。 */
+export function assertValidDatabaseFile(filePath: string): void {
+  if (!Database) {
+    throw new Error(`Database module not available: ${dbLoadError}`);
+  }
+
+  const candidate = new Database(filePath, { readonly: true, fileMustExist: true });
+  try {
+    const result = candidate.pragma('quick_check', { simple: true });
+    if (result !== 'ok') {
+      throw new Error(`SQLite quick_check failed: ${String(result)}`);
+    }
+  } finally {
+    candidate.close();
+  }
+}
+
+/** 当前连接已被有意关闭、必须重启后才能继续访问。 */
+export function isDatabaseRestartRequired(): boolean {
+  return databaseUnavailableReason !== null;
+}
+
+var databaseRestartScheduled = false;
+
+/** 安排应用重启；仅在 relaunch 已成功登记后才退出当前进程。 */
+export function scheduleDatabaseRestart(delayMs: number = 250): void {
+  if (databaseRestartScheduled) return;
+  app.relaunch();
+  databaseRestartScheduled = true;
+  setTimeout(() => app.exit(0), delayMs);
+}
+
+/**
+ * 将当前数据库在线备份到指定路径。所有备份串行执行，并且只在 SQLite
+ * 明确报告完成后 resolve，避免调用方读取到尚未完成的文件。
+ */
+export async function backupDatabaseTo(destination: string): Promise<void> {
+  const run = backupQueue.catch(() => {}).then(async () => {
+    const s = getSqlite();
+    await s.backup(destination);
+  });
+  backupQueue = run.then(() => {}, () => {});
+  await run;
+}
+
 /** 备份数据库到用户目录/backups */
-export function backupDatabase(): string {
-  const dbPath = getDbPath();
+export async function backupDatabase(): Promise<string> {
   const backupDir = path.join(app.getPath('userData'), 'backups');
   if (!fs.existsSync(backupDir)) {
     fs.mkdirSync(backupDir, { recursive: true });
@@ -69,8 +133,7 @@ export function backupDatabase(): string {
   const backupPath = path.join(backupDir, `samplerhub-${timestamp}.db`);
 
   // 使用 SQLite backup API（安全在线备份）
-  const s = getSqlite();
-  s.backup(backupPath);
+  await backupDatabaseTo(backupPath);
 
   // 清理旧备份，保留最近 10 个
   const backups = fs.readdirSync(backupDir)
@@ -86,12 +149,16 @@ export function backupDatabase(): string {
 
 /** 启动定时备份（每 24 小时） */
 var backupTimer: ReturnType<typeof setInterval> | null = null;
+var initialBackupTimer: ReturnType<typeof setTimeout> | null = null;
 
 export function startAutoBackup(): void {
+  if (backupTimer || initialBackupTimer) return;
+
   // 首次启动延迟 5 分钟备份，避免影响启动性能
-  setTimeout(() => {
+  initialBackupTimer = setTimeout(async () => {
+    initialBackupTimer = null;
     try {
-      backupDatabase();
+      await backupDatabase();
       console.log('[Backup] Initial backup completed');
     } catch (err) {
       console.error('[Backup] Initial backup failed:', err);
@@ -99,10 +166,10 @@ export function startAutoBackup(): void {
   }, 5 * 60 * 1000);
 
   // 每 24 小时备份一次
-  backupTimer = setInterval(() => {
+  backupTimer = setInterval(async () => {
     try {
-      const path = backupDatabase();
-      console.log('[Backup] Scheduled backup completed:', path);
+      const backupPath = await backupDatabase();
+      console.log('[Backup] Scheduled backup completed:', backupPath);
     } catch (err) {
       console.error('[Backup] Scheduled backup failed:', err);
     }
@@ -110,6 +177,10 @@ export function startAutoBackup(): void {
 }
 
 export function stopAutoBackup(): void {
+  if (initialBackupTimer) {
+    clearTimeout(initialBackupTimer);
+    initialBackupTimer = null;
+  }
   if (backupTimer) {
     clearInterval(backupTimer);
     backupTimer = null;
@@ -117,7 +188,9 @@ export function stopAutoBackup(): void {
 }
 
 // 数据库 schema 版本，每次新增迁移时递增
-const DB_SCHEMA_VERSION = 2;
+// v3 forces one idempotent schema reconciliation for databases that were
+// previously marked v2 before later columns/tables were added.
+const DB_SCHEMA_VERSION = 3;
 
 function getDbVersion(s: any): number {
   try {
@@ -129,8 +202,71 @@ function setDbVersion(s: any, v: number): void {
   s.prepare(`PRAGMA user_version = ${v}`).run();
 }
 
+/**
+ * 应用尚未登记的 SQL migrations。
+ *
+ * user_version 只描述内联 schema 版本，不能替代逐文件 migration 登记。
+ * 每个文件和对应登记行位于同一事务中；任何语句失败都会完整回滚并向
+ * 启动调用方传播错误，以便下次启动安全重试。
+ */
+export function applyPendingSqlMigrations(s: any, migrationsDir: string): string[] {
+  if (!fs.existsSync(migrationsDir)) {
+    throw new Error(`Database migrations directory not found: ${migrationsDir}`);
+  }
+
+  s.exec(`
+    CREATE TABLE IF NOT EXISTS migrations (
+      name TEXT PRIMARY KEY,
+      applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  const migrationFiles = fs.readdirSync(migrationsDir)
+    .filter(file => file.endsWith('.sql'))
+    .sort();
+  const appliedFiles: string[] = [];
+
+  for (const file of migrationFiles) {
+    const applied = s.prepare('SELECT 1 FROM migrations WHERE name = ?').get(file);
+    if (applied) continue;
+
+    const migrationSql = fs.readFileSync(path.join(migrationsDir, file), 'utf-8');
+    const applyMigration = s.transaction(() => {
+      s.exec(migrationSql);
+      s.prepare('INSERT INTO migrations (name) VALUES (?)').run(file);
+    });
+
+    console.log(`[DB] Applying migration: ${file}`);
+    applyMigration();
+    appliedFiles.push(file);
+    console.log(`[DB] Migration ${file} applied successfully`);
+  }
+
+  return appliedFiles;
+}
+
+function getMigrationsDir(): string {
+  const selfPath = fileURLToPath(import.meta.url);
+  const appRoot = process.env.APP_ROOT || path.join(path.dirname(selfPath), '../..');
+  return path.join(appRoot, 'drizzle', 'migrations');
+}
+
 export async function initDatabase(): Promise<void> {
   if (isDatabaseInitialized) return;
+  if (databaseInitPromise) return databaseInitPromise;
+
+  databaseInitPromise = initializeDatabase();
+  try {
+    await databaseInitPromise;
+  } catch (error) {
+    isDatabaseInitialized = false;
+    throw error;
+  } finally {
+    databaseInitPromise = null;
+  }
+}
+
+async function initializeDatabase(): Promise<void> {
 
   // 先确保数据库连接已创建
   getDatabase();
@@ -138,10 +274,11 @@ export async function initDatabase(): Promise<void> {
   const startTime = Date.now();
   let stepStart = startTime;
 
-  // --- a. 快速路径：检查 schema 版本，已初始化则跳过重型操作 ---
+  // --- a. 快速路径：内联 schema 已是最新，但仍必须检查逐文件 migrations ---
   const currentVersion = getDbVersion(s);
   if (currentVersion >= DB_SCHEMA_VERSION) {
-    console.log(`[DB] Schema v${currentVersion} already up to date, skipping init (${Date.now() - startTime}ms)`);
+    const applied = applyPendingSqlMigrations(s, getMigrationsDir());
+    console.log(`[DB] Schema v${currentVersion} already up to date; applied ${applied.length} pending migration(s) (${Date.now() - startTime}ms)`);
     isDatabaseInitialized = true;
     return;
   }
@@ -152,16 +289,26 @@ export async function initDatabase(): Promise<void> {
     stepStart = Date.now();
     console.log('[DB] Applying v1->v2 incremental migrations...');
     // v2: 添加排序索引
-    try { s.exec(`CREATE INDEX IF NOT EXISTS idx_samples_created_at ON samples(created_at)`); } catch {}
-    try { s.exec(`CREATE INDEX IF NOT EXISTS idx_samples_file_name ON samples(file_name)`); } catch {}
-    setDbVersion(s, 2);
+    const migrateV1ToV2 = s.transaction(() => {
+      s.exec(`CREATE INDEX IF NOT EXISTS idx_samples_created_at ON samples(created_at)`);
+      s.exec(`CREATE INDEX IF NOT EXISTS idx_samples_file_name ON samples(file_name)`);
+    });
+    migrateV1ToV2();
     console.log(`[DB] v1->v2 migrations completed in ${Date.now() - stepStart}ms`);
-    return;
+    // 继续执行后面的幂等 schema 创建和逐文件 migrations。只有全部成功后
+    // 才会在函数末尾推进 user_version 并置 initialized。
   }
 
   // --- a3. 首次创建数据库时，批量更新 samples 的 category_id ---
   // 此逻辑只在全新数据库（currentVersion === 0）时执行
-  if (currentVersion === 0) {
+  const hasLegacyCoreTables = currentVersion === 0 && Boolean(s.prepare(`
+    SELECT 1
+    FROM sqlite_master
+    WHERE type = 'table' AND name IN ('samples', 'categories')
+    GROUP BY type
+    HAVING COUNT(*) = 2
+  `).get());
+  if (hasLegacyCoreTables) {
     stepStart = Date.now();
     console.log('[DB] First-time init: batch updating sample category_ids...');
     try {
@@ -687,46 +834,7 @@ export async function initDatabase(): Promise<void> {
   } catch {}
   console.log(`[DB] Step e (conditional data fixes) took ${Date.now() - stepStart}ms`);
 
-  // --- f. SQL file migrations (keep existing logic) ---
-  stepStart = Date.now();
-  try {
-    const { fileURLToPath } = await import('node:url');
-    const _selfPath = fileURLToPath(import.meta.url);
-    const appRoot = process.env.APP_ROOT || path.join(path.dirname(_selfPath), '../..');
-    const migrationsDir = path.join(appRoot, 'drizzle', 'migrations');
-    console.log(`[DB] Migrations dir: ${migrationsDir}, exists: ${fs.existsSync(migrationsDir)}`);
-
-    if (fs.existsSync(migrationsDir)) {
-      const migrationFiles = fs.readdirSync(migrationsDir)
-        .filter(f => f.endsWith('.sql'))
-        .sort();
-
-      for (const file of migrationFiles) {
-        try {
-          const applied = s.prepare(
-            'SELECT 1 FROM migrations WHERE name = ?'
-          ).get(file);
-
-          if (applied) continue;
-
-          console.log(`[DB] Applying migration: ${file}`);
-          const sql = fs.readFileSync(path.join(migrationsDir, file), 'utf-8');
-          s.exec(sql);
-          s.prepare('INSERT OR IGNORE INTO migrations (name) VALUES (?)').run(file);
-          console.log(`[DB] Migration ${file} applied successfully`);
-        } catch (migrationErr) {
-          console.error(`[DB] Migration ${file} failed:`, migrationErr);
-        }
-      }
-    } else {
-      console.warn(`[DB] Migrations directory not found: ${migrationsDir}`);
-    }
-  } catch (err) {
-    console.error('[DB] Migration error:', err);
-  }
-  console.log(`[DB] Step f (SQL file migrations) took ${Date.now() - stepStart}ms`);
-
-  // --- g. Auxiliary tables (analysis_sessions, audio_segments, etc.) ---
+  // --- f. Auxiliary tables (analysis_sessions, audio_segments, etc.) ---
   stepStart = Date.now();
   try {
     s.exec(`
@@ -786,9 +894,9 @@ export async function initDatabase(): Promise<void> {
   try {
     s.exec(`CREATE INDEX IF NOT EXISTS idx_samples_tags ON samples(tags)`);
   } catch {}
-  console.log(`[DB] Step g (auxiliary tables) took ${Date.now() - stepStart}ms`);
+  console.log(`[DB] Step f (auxiliary tables) took ${Date.now() - stepStart}ms`);
 
-  // --- h. 数据修复：将旧的 category_id 映射到新的层级体系（条件执行） ---
+  // --- g. 数据修复：将旧的 category_id 映射到新的层级体系（条件执行） ---
   stepStart = Date.now();
   try {
     const oldUncategorized = s.prepare('SELECT COUNT(*) as cnt FROM samples WHERE category_id = 19').get() as { cnt: number };
@@ -799,7 +907,13 @@ export async function initDatabase(): Promise<void> {
   } catch (fixErr) {
     console.error('[DB] Data fix error:', fixErr);
   }
-  console.log(`[DB] Step h (data fixes) took ${Date.now() - stepStart}ms`);
+  console.log(`[DB] Step g (data fixes) took ${Date.now() - stepStart}ms`);
+
+  // --- h. SQL file migrations ---
+  // 必须位于所有基础/辅助表创建之后；部分 migrations 会为这些表建立索引。
+  stepStart = Date.now();
+  const appliedMigrations = applyPendingSqlMigrations(s, getMigrationsDir());
+  console.log(`[DB] Step h (SQL migrations, applied ${appliedMigrations.length}) took ${Date.now() - stepStart}ms`);
 
   // --- i. 标记 schema 已初始化完成 ---
   setDbVersion(s, DB_SCHEMA_VERSION);
@@ -811,28 +925,36 @@ export async function initDatabase(): Promise<void> {
  * 重置数据库：删除数据库文件并重新初始化
  * 警告：这会删除所有数据！调用前必须确认用户已备份
  */
-export function resetDatabase(): void {
-  // 关闭现有连接
+export function resetDatabase(): { requiresRestart: true } {
+  // 尽量把 WAL 合并回主文件；失败时不能继续执行破坏性重置。
   if (sqlite) {
-    try { sqlite.close(); } catch {}
-    sqlite = null;
-    db = null;
+    sqlite.pragma('wal_checkpoint(TRUNCATE)');
   }
+  resetDatabaseConnection('Database reset completed');
 
   const dbPath = getDbPath();
   const walPath = dbPath + '-wal';
   const shmPath = dbPath + '-shm';
 
-  // 删除数据库文件
-  try { fs.unlinkSync(dbPath); } catch {}
-  try { fs.unlinkSync(walPath); } catch {}
-  try { fs.unlinkSync(shmPath); } catch {}
+  // 删除数据库文件。除“不存在”外的错误必须向 IPC 传播。
+  try {
+    for (const filePath of [dbPath, walPath, shmPath]) {
+      try {
+        fs.unlinkSync(filePath);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      }
+    }
+  } catch (error) {
+    // 连接已关闭，即使删除失败也必须重启，避免旧 handler 继续运行。
+    scheduleDatabaseRestart();
+    throw error;
+  }
 
-  // 重置初始化标志，否则 initDatabase() 会直接返回
-  isDatabaseInitialized = false;
-
-  // 重新初始化
-  initDatabase();
+  // 已注册 IPC handler 捕获的是旧连接，不能在当前进程热重绑。
+  // 重启后 initDatabase() 会可靠创建空库。
+  scheduleDatabaseRestart();
+  return { requiresRestart: true };
 }
 
 /** 批量重建 FTS5 索引（扫描完成后调用，替代逐行触发器） */

@@ -1,7 +1,12 @@
 import { app } from 'electron'
 import path from 'node:path'
 import fs from 'node:fs'
-import { getDatabase, getSqlite, getDbPath, resetDatabaseConnection } from './database'
+import {
+  assertValidDatabaseFile,
+  backupDatabaseTo,
+  getDbPath,
+  resetDatabaseConnection,
+} from './database'
 import log from 'electron-log'
 
 const BACKUP_DIR_NAME = 'backups'
@@ -23,15 +28,14 @@ function formatTimestamp(date: Date): string {
 }
 
 /** 创建数据库备份 */
-export function createBackup(): { success: boolean; path?: string; error?: string; size?: number } {
+export async function createBackup(): Promise<{ success: boolean; path?: string; error?: string; size?: number }> {
   try {
     const backupDir = getBackupDir()
     const timestamp = formatTimestamp(new Date())
     const backupPath = path.join(backupDir, `database_${timestamp}.db`)
 
     // 使用 SQLite backup API（安全在线备份）
-    const sqlite = getSqlite()
-    sqlite.backup(backupPath)
+    await backupDatabaseTo(backupPath)
 
     const stats = fs.statSync(backupPath)
 
@@ -48,37 +52,101 @@ export function createBackup(): { success: boolean; path?: string; error?: strin
 }
 
 /** 从备份恢复数据库 */
-export function restoreBackup(backupFileName: string): { success: boolean; error?: string } {
+export async function restoreBackup(backupFileName: string): Promise<{
+  success: boolean;
+  error?: string;
+  requiresRestart?: boolean;
+}> {
+  let connectionClosed = false
+  let safetyBackupPath = ''
+  let restoreTempPath = ''
+
   try {
     const backupDir = getBackupDir()
-    const backupPath = path.join(backupDir, backupFileName)
+    if (
+      typeof backupFileName !== 'string' ||
+      path.basename(backupFileName) !== backupFileName ||
+      !/^database_.+\.db$/u.test(backupFileName)
+    ) {
+      return { success: false, error: 'Invalid backup file name' }
+    }
+
+    const backupPath = path.resolve(backupDir, backupFileName)
 
     if (!fs.existsSync(backupPath)) {
       return { success: false, error: `Backup file not found: ${backupFileName}` }
     }
 
-    // 先创建当前数据库的备份（安全措施）
-    const dbPath = getDbPath()
-    const safetyBackupPath = path.join(backupDir, `pre_restore_${formatTimestamp(new Date())}.db`)
-    if (fs.existsSync(dbPath)) {
-      fs.copyFileSync(dbPath, safetyBackupPath)
+    const realBackupDir = fs.realpathSync(backupDir)
+    const realBackupPath = fs.realpathSync(backupPath)
+    const relativeBackupPath = path.relative(realBackupDir, realBackupPath)
+    if (relativeBackupPath.startsWith('..') || path.isAbsolute(relativeBackupPath)) {
+      return { success: false, error: 'Backup file resolves outside the backup directory' }
+    }
+    if (!fs.statSync(realBackupPath).isFile()) {
+      return { success: false, error: 'Backup path is not a regular file' }
     }
 
+    // 在关闭当前连接前完整校验候选文件，校验失败时应用仍可继续运行。
+    assertValidDatabaseFile(realBackupPath)
+
+    // 先创建当前数据库的备份（安全措施）
+    const dbPath = getDbPath()
+    safetyBackupPath = path.join(backupDir, `pre_restore_${formatTimestamp(new Date())}.db`)
+    if (fs.existsSync(dbPath)) {
+      await backupDatabaseTo(safetyBackupPath)
+    }
+
+    // 先复制到同目录临时文件并再次校验，避免源文件在校验后被替换。
+    restoreTempPath = `${dbPath}.restore-${process.pid}-${Date.now()}.tmp`
+    fs.copyFileSync(realBackupPath, restoreTempPath)
+    assertValidDatabaseFile(restoreTempPath)
+
     // 关闭当前数据库连接
-    resetDatabaseConnection()
+    resetDatabaseConnection('Database backup restored')
+    connectionClosed = true
 
-    // 用备份文件替换当前数据库
-    fs.copyFileSync(backupPath, dbPath)
-
-    // 重新初始化数据库连接
-    getDatabase()
+    // 用已校验的临时文件替换当前数据库；旧 WAL/SHM 绝不能与恢复文件混用。
+    removeIfExists(`${dbPath}-wal`)
+    removeIfExists(`${dbPath}-shm`)
+    fs.copyFileSync(restoreTempPath, dbPath)
+    removeIfExists(restoreTempPath)
 
     log.info(`[Backup] Restored from: ${backupFileName}`)
-    return { success: true }
+    return { success: true, requiresRestart: true }
   } catch (err) {
     const errorMsg = (err as Error).message
     log.error('[Backup] Failed to restore backup:', errorMsg)
-    return { success: false, error: errorMsg }
+
+    // 一旦旧连接已关闭，当前进程不能安全热重绑。尽力恢复安全备份，
+    // 然后明确要求重启；恢复失败也不能伪装成可继续运行。
+    if (connectionClosed && safetyBackupPath && fs.existsSync(safetyBackupPath)) {
+      try {
+        const dbPath = getDbPath()
+        removeIfExists(`${dbPath}-wal`)
+        removeIfExists(`${dbPath}-shm`)
+        fs.copyFileSync(safetyBackupPath, dbPath)
+      } catch (rollbackError) {
+        log.error('[Backup] Failed to roll back restore:', rollbackError)
+      }
+    }
+    return { success: false, error: errorMsg, requiresRestart: connectionClosed }
+  } finally {
+    if (restoreTempPath) {
+      try {
+        removeIfExists(restoreTempPath)
+      } catch (cleanupError) {
+        log.warn('[Backup] Failed to remove restore temp file:', cleanupError)
+      }
+    }
+  }
+}
+
+function removeIfExists(filePath: string): void {
+  try {
+    fs.unlinkSync(filePath)
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
   }
 }
 

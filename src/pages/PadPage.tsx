@@ -15,22 +15,10 @@ import s from '../styles/pages/pad-page.module.css';
 // 通过 Electron 读取本地音频文件为 ArrayBuffer
 async function readLocalAudioFile(filePath: string): Promise<ArrayBuffer | null> {
   try {
-    // 使用 Electron 的 ipcRenderer 读取文件
-    const result = await window.electronAPI.invoke('fs:readFile', { filePath }) as { success: boolean; data?: unknown; error?: string };
-    if (result.success && result.data) {
-      return result.data as ArrayBuffer;
-    }
+    return await ipcClient.getAudioBuffer(filePath);
   } catch {
-    // fallback: 使用 IPC 读取音频文件，避免 file:// URL 特殊字符问题
-    try {
-      const buffer = await ipcClient.getAudioBuffer(filePath);
-      if (buffer) return buffer;
-      return null;
-    } catch {
-      return null;
-    }
+    return null;
   }
-  return null;
 }
 
 const PadPage: React.FC = () => {
