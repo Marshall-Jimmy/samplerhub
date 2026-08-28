@@ -7,6 +7,7 @@ interface Window {
     on: (channel: string, listener: (...args: any[]) => void) => () => void
     off: (channel: string, listener?: (...args: any[]) => void) => void
     send: (channel: string, ...args: any[]) => void
+    getPathForFile: (file: File) => string
     minimize: () => void
     maximize: () => void
     close: () => void

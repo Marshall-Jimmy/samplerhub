@@ -1,4 +1,4 @@
-import { ipcRenderer, contextBridge } from 'electron'
+import { ipcRenderer, contextBridge, webUtils } from 'electron'
 import { IPC_CHANNELS } from '../../shared/types/ipc.types'
 
 // 合法的 IPC 通道白名单
@@ -189,6 +189,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     console.warn(`[Preload] sendSync is blocked for security: ${channel}`)
     return undefined
   },
+  getPathForFile: (file: File) => webUtils.getPathForFile(file),
   // 窗口控制
   minimize: () => ipcRenderer.invoke('window:minimize'),
   maximize: () => ipcRenderer.invoke('window:maximize'),

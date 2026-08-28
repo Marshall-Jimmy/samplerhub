@@ -8,6 +8,7 @@ declare global {
       off: (channel: string, callback?: (...args: unknown[]) => void) => void;
       send: (channel: string, ...args: unknown[]) => void;
       sendSync: (channel: string, ...args: unknown[]) => undefined;
+      getPathForFile: (file: File) => string;
       minimize: () => void;
       maximize: () => void;
       close: () => void;

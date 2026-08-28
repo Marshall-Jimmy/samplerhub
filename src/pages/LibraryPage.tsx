@@ -779,7 +779,9 @@ const LibraryPage: React.FC = () => {
       if (audioFiles.length === 0) return;
 
       try {
-        const result = await ipcClient.importFiles(audioFiles.map(f => f.path));
+        const result = await ipcClient.importFiles(
+          audioFiles.map(file => window.electronAPI.getPathForFile(file))
+        );
         toast.success(t('library.importSuccess', { imported: result.imported, skipped: result.skipped }));
         queryClient.invalidateQueries({ queryKey: ['samples'] });
       } catch (err) {
