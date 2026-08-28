@@ -66,7 +66,7 @@ const DrumPad: React.FC<DrumPadProps> = ({
     if (!filePath && e.dataTransfer.files.length > 0) {
       const file = e.dataTransfer.files[0];
       if (file.type.startsWith('audio/') || /\.(wav|mp3|flac|aiff|ogg|m4a)$/i.test(file.name)) {
-        filePath = file.path || '';
+        filePath = window.electronAPI.getPathForFile(file);
       }
     }
     if (filePath && onDropSample) {
