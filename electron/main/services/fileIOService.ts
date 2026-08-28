@@ -1,14 +1,11 @@
 import { readFile } from 'fs/promises';
 import os from 'os';
-import LRUCache from 'lru-cache';
 import type { AudioFileHelper } from './audioFileHelper';
-
-type LRUType = InstanceType<typeof LRUCache>;
 
 export interface FileIOOptions {
   /** 最大缓存条目数，默认 100 */
   maxCacheSize?: number;
-  /** 最大缓存字节数，默认 500MB（lru-cache v6 通过 length 函数实现） */
+  /** 最大缓存字节数，默认 500MB */
   maxCacheBytes?: number;
   /** 预读文件数，默认 5 */
   preloadAhead?: number;
@@ -22,9 +19,12 @@ export interface CachedFile {
 }
 
 class FileIOService {
-  private cache: LRUType;
-  private maxCacheBytes: number;
+  /** Map insertion order is used as the LRU order (oldest first). */
+  private readonly cache = new Map<string, Buffer>();
+  private readonly maxCacheSize: number;
+  private readonly maxCacheBytes: number;
   private currentBytes = 0;
+  private readonly inFlightReads = new Map<string, Promise<Buffer>>();
 
   constructor(options: FileIOOptions = {}) {
     const {
@@ -32,16 +32,8 @@ class FileIOService {
       maxCacheBytes = 500 * 1024 * 1024,
     } = options;
 
+    this.maxCacheSize = maxCacheSize;
     this.maxCacheBytes = maxCacheBytes;
-
-    this.cache = new (LRUCache as any)({
-      max: maxCacheSize,
-      length: (buf: Buffer) => buf.length,
-      maxAge: 0, // 永不过期
-      dispose: (_key: string, buf: Buffer) => {
-        this.currentBytes -= buf.length;
-      },
-    });
   }
 
   /**
@@ -50,20 +42,50 @@ class FileIOService {
   async readFile(filePath: string): Promise<Buffer> {
     const cached = this.cache.get(filePath);
     if (cached) {
+      // Refresh insertion order so the first key always remains the LRU entry.
+      this.cache.delete(filePath);
+      this.cache.set(filePath, cached);
       return cached;
     }
 
-    const buffer = await readFile(filePath);
+    const existingRead = this.inFlightReads.get(filePath);
+    if (existingRead) {
+      return existingRead;
+    }
 
-    // 检查是否超过字节限制
-    if (this.currentBytes + buffer.length > this.maxCacheBytes) {
-      // 清理最旧的条目直到有足够空间
-      this.evictForSpace(buffer.length);
+    const pendingRead = readFile(filePath).then((buffer) => {
+      this.cacheBuffer(filePath, buffer);
+      return buffer;
+    }).finally(() => {
+      this.inFlightReads.delete(filePath);
+    });
+
+    this.inFlightReads.set(filePath, pendingRead);
+    return pendingRead;
+  }
+
+  private cacheBuffer(filePath: string, buffer: Buffer): void {
+    if (buffer.byteLength > this.maxCacheBytes || this.maxCacheSize <= 0) return;
+
+    const previous = this.cache.get(filePath);
+    if (previous) {
+      this.currentBytes -= previous.byteLength;
+      this.cache.delete(filePath);
+    }
+
+    while (
+      this.cache.size > 0 &&
+      (this.cache.size >= this.maxCacheSize || this.currentBytes + buffer.byteLength > this.maxCacheBytes)
+    ) {
+      const oldestKey = this.cache.keys().next().value as string | undefined;
+      if (oldestKey === undefined) break;
+      const oldest = this.cache.get(oldestKey);
+      this.cache.delete(oldestKey);
+      if (oldest) this.currentBytes -= oldest.byteLength;
     }
 
     this.cache.set(filePath, buffer);
-    this.currentBytes += buffer.length;
-    return buffer;
+    this.currentBytes += buffer.byteLength;
   }
 
   /**
@@ -78,19 +100,11 @@ class FileIOService {
     for (let i = 0; i < uncached.length; i += concurrency) {
       const batch = uncached.slice(i, i + concurrency);
       await Promise.all(
-        batch.map(async (path) => {
+        batch.map(async (filePath) => {
           try {
-            const buffer = await readFile(path);
-
-            // 检查字节限制
-            if (this.currentBytes + buffer.length > this.maxCacheBytes) {
-              this.evictForSpace(buffer.length);
-            }
-
-            this.cache.set(path, buffer);
-            this.currentBytes += buffer.length;
+            await this.readFile(filePath);
           } catch (err) {
-            console.warn(`[FileIO] Preload failed for ${path}:`, err);
+            console.warn(`[FileIO] Preload failed for ${filePath}:`, err);
           }
         })
       );
@@ -98,27 +112,12 @@ class FileIOService {
   }
 
   /**
-   * 为腾出空间而淘汰旧条目
-   */
-  private evictForSpace(neededBytes: number): void {
-    // lru-cache v6 使用 keys() 获取键（按 LRU 顺序）
-    const keys = this.cache.keys();
-    while (this.currentBytes + neededBytes > this.maxCacheBytes && this.cache.itemCount > 0) {
-      const oldest = keys[0];
-      if (oldest) {
-        this.cache.del(oldest);
-      } else {
-        break;
-      }
-    }
-  }
-
-  /**
    * 清除缓存
    */
   clearCache(): void {
-    this.cache.reset();
+    this.cache.clear();
     this.currentBytes = 0;
+    this.inFlightReads.clear();
   }
 
   /**
@@ -126,9 +125,9 @@ class FileIOService {
    */
   getStats(): { size: number; bytes: number; keys: string[] } {
     return {
-      size: this.cache.itemCount,
+      size: this.cache.size,
       bytes: this.currentBytes,
-      keys: this.cache.keys(),
+      keys: Array.from(this.cache.keys()),
     };
   }
 }

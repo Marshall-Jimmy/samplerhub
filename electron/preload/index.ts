@@ -83,6 +83,8 @@ const ALLOWED_INVOKE_CHANNELS = new Set<string>([
   IPC_CHANNELS.PARSE_MIDI,
   IPC_CHANNELS.GET_MIDI_PREVIEW,
   IPC_CHANNELS.EXPORT_SEQUENCER_MIDI,
+  IPC_CHANNELS.SAVE_SEQUENCER_PATTERN,
+  IPC_CHANNELS.LOAD_SEQUENCER_PATTERN,
   // 音频分析
   IPC_CHANNELS.AUDIO_ANALYZE_FILE,
   IPC_CHANNELS.AUDIO_ANALYZE_BATCH,
@@ -101,9 +103,30 @@ const ALLOWED_INVOKE_CHANNELS = new Set<string>([
   // UCS 分类
   IPC_CHANNELS.GET_UCS_CATEGORIES,
   IPC_CHANNELS.GET_UCS_SUBCATEGORIES,
-  'fs:readFile',
   'audio:getBuffer',
   'samples:getAudioBuffer',
+  'samples:restoreSamples',
+  'samples:findSimilarByFeatures',
+  'samples:semanticSearch',
+  'samples:getAudioSegments',
+  'samples:importFiles',
+  'samples:updateRatingNotes',
+  'database:reset',
+  'analysis:createSession',
+  'analysis:startSession',
+  'analysis:pauseSession',
+  'analysis:resumeSession',
+  'analysis:cancelSession',
+  'analysis:getProgress',
+  'analysis:getIncompleteSessions',
+  'analysis:getSessions',
+  'analysis:getPresets',
+  'analysis:estimateTime',
+  'perf:getMetrics',
+  'check-update',
+  'start-download',
+  'cancel-download',
+  'quit-and-install',
 ])
 
 const ALLOWED_ON_CHANNELS = new Set<string>([
@@ -113,6 +136,11 @@ const ALLOWED_ON_CHANNELS = new Set<string>([
   'window:close-requested',
   'metadata-job:progress',
   'metadata-job:complete',
+  'analysis:progress',
+  'update-can-available',
+  'update-error',
+  'download-progress',
+  'update-downloaded',
 ])
 
 const ALLOWED_SEND_CHANNELS = new Set<string>([

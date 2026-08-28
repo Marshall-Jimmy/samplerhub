@@ -1,8 +1,4 @@
-import { readdir, stat } from 'fs/promises';
-import type { Dirent } from 'fs';
-import { join, extname } from 'path';
-import { createHash } from 'crypto';
-import { AUDIO_EXTENSIONS, MIDI_EXTENSIONS, ALL_SUPPORTED_EXTENSIONS } from '../../../shared/constants/audioFormats';
+import { ALL_SUPPORTED_EXTENSIONS } from '../../../shared/constants/audioFormats';
 import { getDatabase, getSqlite, rebuildFtsIndex } from './database';
 import { parseAudioFile } from './audioParser';
 import { parseMidiFile, isMidiFile } from './midiParser';
@@ -11,12 +7,21 @@ import { extractBPMAndKey } from './bpmKeyParser';
 import { generateWaveform, writeWaveformFile, writePeakEnvelopeFile } from './waveformGenerator';
 import { extractAudioFeatures, inferTagsFromFeatures, hasFfmpeg } from './audioFeatureExtractor';
 import { samples, watchedFolders, classificationRules } from '../../../drizzle/schema';
-import { eq, inArray } from 'drizzle-orm';
-import type { ScanProgress } from '../../../shared/types/sample.types';
-import { analyzeAudioFile, initEssentia } from './audioAnalyzer';
+import { eq } from 'drizzle-orm';
+import type { ClassificationRule, ScanProgress } from '../../../shared/types/sample.types';
+import { analyzeAudioFile } from './audioAnalyzer';
 import { getFileIOService } from './fileIOService';
 import { perfMonitor } from './performanceMonitor';
 import { BrowserWindow } from 'electron';
+import {
+  canonicalizeLibraryPath,
+  collectSupportedFiles,
+  computeFileFingerprint,
+  dateToDatabaseTimestamp,
+  diffScannedFiles,
+  getDescendantPathRange,
+} from './scanFileSystem';
+import { runChunkedTransaction } from './scanTransactions';
 
 export interface FileInfo {
   path: string;
@@ -24,6 +29,27 @@ export interface FileInfo {
   size: number;
   modifiedAt: Date;
   hash: string;
+}
+
+function classifyFilesInTransactions(
+  files: readonly FileInfo[],
+  rules: ClassificationRule[],
+  sqlite: any,
+  signal: AbortSignal,
+): number {
+  const updateStmt = sqlite.prepare('UPDATE samples SET category_id = ? WHERE file_path = ?');
+  const deleteTagsStmt = sqlite.prepare('DELETE FROM sample_categories WHERE sample_id = (SELECT id FROM samples WHERE file_path = ?)');
+  const insertTagStmt = sqlite.prepare('INSERT OR IGNORE INTO sample_categories (sample_id, category_id, is_primary) VALUES ((SELECT id FROM samples WHERE file_path = ?), ?, ?)');
+
+  return runChunkedTransaction(sqlite, files, (file) => {
+    const result = classifySample(file.name, file.path, rules);
+    updateStmt.run(result.primary, file.path);
+    deleteTagsStmt.run(file.path);
+    insertTagStmt.run(file.path, result.primary, 1);
+    for (const categoryId of result.secondary) {
+      insertTagStmt.run(file.path, categoryId, 0);
+    }
+  }, { batchSize: 500, signal });
 }
 
 // ============ 后台元数据/波形/分类处理队列 ============
@@ -304,40 +330,8 @@ async function processMetadataBatch(files: FileInfo[], signal: AbortSignal): Pro
 
   // 自动分类（支持多标签）
   if (!signal.aborted) {
-    const rules = await db.select().from(classificationRules) as import('../../../shared/types/sample.types').ClassificationRule[];
-    const BATCH = 500;
-    const updateStmt = sqlite.prepare('UPDATE samples SET category_id = ? WHERE file_path = ?');
-    const deleteTagsStmt = sqlite.prepare('DELETE FROM sample_categories WHERE sample_id = (SELECT id FROM samples WHERE file_path = ?)');
-    const insertTagStmt = sqlite.prepare('INSERT OR IGNORE INTO sample_categories (sample_id, category_id, is_primary) VALUES ((SELECT id FROM samples WHERE file_path = ?), ?, ?)');
-    
-    let batchCount = 0;
-    sqlite.exec('BEGIN TRANSACTION');
-    for (const file of files) {
-      if (signal.aborted) break;
-      const result = classifySample(file.name, file.path, rules);
-      
-      // 更新主分类
-      updateStmt.run(result.primary, file.path);
-      
-      // 清除旧的多分类标签
-      deleteTagsStmt.run(file.path);
-      
-      // 插入主分类标签
-      insertTagStmt.run(file.path, result.primary, 1);
-      
-      // 插入次分类标签
-      for (const catId of result.secondary) {
-        insertTagStmt.run(file.path, catId, 0);
-      }
-      
-      batchCount++;
-      if (batchCount >= BATCH) {
-        sqlite.exec('COMMIT');
-        sqlite.exec('BEGIN TRANSACTION');
-        batchCount = 0;
-      }
-    }
-    if (batchCount > 0) sqlite.exec('COMMIT');
+    const rules = await db.select().from(classificationRules) as ClassificationRule[];
+    classifyFilesInTransactions(files, rules, sqlite, signal);
   }
 }
 
@@ -352,79 +346,21 @@ export function abortScan(): void {
 }
 
 export function computeFileHash(filePath: string, fileSize: number, mtimeMs: number): string {
-  const hash = createHash('md5');
-  hash.update(`${filePath}:${fileSize}:${mtimeMs}`);
-  return hash.digest('hex');
-}
-
-/** 并发限制的目录遍历 */
-async function traverseDirs(dirs: string[], concurrency: number, fn: (dir: string) => Promise<void>): Promise<void> {
-  let index = 0;
-  async function runNext(): Promise<void> {
-    while (index < dirs.length) {
-      const dir = dirs[index++];
-      await fn(dir);
-    }
-  }
-  await Promise.all(Array.from({ length: Math.min(concurrency, dirs.length) }, () => runNext()));
+  return computeFileFingerprint(filePath, fileSize, mtimeMs);
 }
 
 export async function collectAudioFiles(dir: string, signal?: AbortSignal): Promise<FileInfo[]> {
-  const files: FileInfo[] = [];
-
-  // 并行遍历子目录（限制并发度为 8）
-  async function traverse(currentDir: string): Promise<void> {
-    if (signal?.aborted) return;
-    let entries;
-    try {
-      entries = await readdir(currentDir, { withFileTypes: true });
-    } catch (err) {
-      console.error(`[Scan] Failed to read directory "${currentDir}":`, err);
-      throw err;
-    }
-
-    // 分离子目录和文件
-    const dirs: string[] = [];
-    const fileEntries: Dirent[] = [];
-
-    for (const entry of entries) {
-      if (entry.name.startsWith('.')) continue;
-      const fullPath = join(currentDir, entry.name);
-      if (entry.isDirectory()) {
-        dirs.push(fullPath);
-      } else if (entry.isFile() && ALL_SUPPORTED_EXTENSIONS.has(extname(entry.name).toLowerCase())) {
-        fileEntries.push(entry);
-      }
-    }
-
-    // 并行遍历子目录（限制并发度为 8）
-    await traverseDirs(dirs, 8, traverse);
-    // 并发 stat（SSD 场景下显著快于串行，限制并发 4 避免过多 I/O 争用）
-    const statResults = await Promise.allSettled(
-      fileEntries.map(async (entry) => {
-        if (signal?.aborted) return null;
-        const fullPath = join(currentDir, entry.name);
-        const stats = await stat(fullPath);
-        return { entry, fullPath, stats };
-      })
-    );
-    for (const result of statResults) {
-      if (result.status === 'fulfilled' && result.value) {
-        const { entry, fullPath, stats } = result.value;
-        const hash = computeFileHash(fullPath, stats.size, stats.mtimeMs);
-        files.push({
-          path: fullPath,
-          name: entry.name,
-          size: stats.size,
-          modifiedAt: stats.mtime,
-          hash,
-        });
-      }
-    }
+  try {
+    return await collectSupportedFiles(dir, ALL_SUPPORTED_EXTENSIONS, {
+      directoryConcurrency: 8,
+      statConcurrency: 32,
+      signal,
+    });
+  } catch (error) {
+    if (signal?.aborted || (error as Error)?.name === 'AbortError') return [];
+    console.error(`[Scan] Failed to collect audio files from "${dir}":`, error);
+    throw error;
   }
-
-  await traverse(dir);
-  return files;
 }
 
 // 并行解析元数据（限制并发数）
@@ -503,56 +439,45 @@ async function doScanFolder(
   const db = getDatabase();
   const sqlite = getSqlite();
   sqlite.exec('PRAGMA busy_timeout = 5000'); // 5秒超时，避免永久阻塞
+  const canonicalFolderPath = canonicalizeLibraryPath(folderPath);
 
   onProgress?.({ current: 0, total: 0, currentFile: '', phase: 'scanning' });
 
   // 1. Collect files
-  const files = await collectAudioFiles(folderPath, signal);
+  const files = await collectAudioFiles(canonicalFolderPath, signal);
   if (signal.aborted) {
     onProgress?.({ current: 0, total: 0, currentFile: '', phase: 'complete' });
     return { added: 0, updated: 0, deleted: 0 };
   }
 
-  // 2. Get existing records — 只查询当前扫描文件夹下的记录，避免全表扫描
-  // 使用 B-tree 范围查询（file_path >= folder AND file_path < folderEnd），比 LIKE 更高效且能走索引
-  const normalizedFolder = folderPath.replace(/\\/g, '/');
-  const folderEnd = normalizedFolder.slice(0, -1) + String.fromCharCode(normalizedFolder.charCodeAt(normalizedFolder.length - 1) + 1);
+  // 2. Get existing records for descendants of this exact root. Including
+  // the native path separator in the range prevents `Samples-Backup` from
+  // being mistaken for a child of `Samples`.
+  const pathRange = getDescendantPathRange(canonicalFolderPath);
   const existingRows = sqlite.prepare(
-    'SELECT id, file_path, file_hash, modified_at FROM samples WHERE file_path >= ? AND file_path < ?'
-  ).all(normalizedFolder, folderEnd) as Array<{ id: number; file_path: string; file_hash: string; modified_at: number | null }>;
+    'SELECT id, file_path, file_hash, file_size, modified_at FROM samples WHERE file_path >= ? AND file_path < ?'
+  ).all(pathRange.start, pathRange.end) as Array<{
+    id: number;
+    file_path: string;
+    file_hash: string;
+    file_size: number;
+    modified_at: number | null;
+  }>;
 
-  const existingMap = new Map(existingRows.map(s => [
-    s.file_path,
-    { id: s.id, hash: s.file_hash, modifiedAt: s.modified_at as Date | number | null }
-  ]));
-
-  // 3. Compute diff - 基于 mtime 快速跳过未变更文件
-  const toAdd: FileInfo[] = [];
-  const toUpdate: FileInfo[] = [];
-  const seenPaths = new Set<string>();
-
-  for (const file of files) {
-    seenPaths.add(file.path);
-    const ex = existingMap.get(file.path);
-    if (!ex) {
-      toAdd.push(file);
-    } else {
-      // mtime 未变且大小一致 → 跳过（避免重新计算哈希）
-      const existingMtime = ex.modifiedAt instanceof Date ? ex.modifiedAt.getTime() : Number(ex.modifiedAt);
-      if (Math.abs(existingMtime - file.modifiedAt.getTime()) < 1000) {
-        continue; // mtime 基本一致，跳过
-      }
-      // mtime 变了才计算哈希确认
-      if (ex.hash !== file.hash) {
-        toUpdate.push(file);
-      }
-    }
-  }
-
-  // existingRows 已通过范围查询限定为当前文件夹下的记录，直接过滤不在扫描结果中的即可
-  const toDelete = existingRows
-    .filter(s => !seenPaths.has(s.file_path))
-    .map(s => s.id);
+  // 3. Compute diff using canonical, platform-aware comparison keys. The
+  // root check inside diffScannedFiles is a second guard against sibling
+  // deletion if a future query accidentally widens this result set.
+  const { toAdd, toUpdate, toDelete } = diffScannedFiles(
+    canonicalFolderPath,
+    files,
+    existingRows.map((row) => ({
+      id: row.id,
+      filePath: row.file_path,
+      fileHash: row.file_hash,
+      fileSize: row.file_size,
+      modifiedAt: row.modified_at,
+    })),
+  );
 
   const total = toAdd.length + toUpdate.length + toDelete.length;
   let current = 0;
@@ -579,8 +504,8 @@ async function doScanFolder(
             f.size,
             f.hash,
             isMidi ? 'midi' : 'audio',
-            f.modifiedAt.getTime(),
-            f.modifiedAt.getTime(),
+            dateToDatabaseTimestamp(f.modifiedAt),
+            dateToDatabaseTimestamp(f.modifiedAt),
             0,  // duration
             0,  // sample_rate
             0,  // bit_rate
@@ -612,7 +537,7 @@ async function doScanFolder(
           'UPDATE samples SET file_size = ?, file_hash = ?, modified_at = ? WHERE file_path = ?'
         );
         for (const file of batch) {
-          stmt.run(file.size, file.hash, file.modifiedAt.getTime(), file.path);
+          stmt.run(file.size, file.hash, dateToDatabaseTimestamp(file.modifiedAt), file.path);
         }
         sqlite.exec('COMMIT');
       } catch (err) {
@@ -659,39 +584,17 @@ async function doScanFolder(
   // 8. 将新增文件加入后台元数据处理队列（fire-and-forget）
   // 用户感知"导入完成"= 文件已入库，元数据/波形/BPM/分类在后台异步处理
   if (toAdd.length > 0 && !signal.aborted) {
-    enqueueMetadataJob(toAdd, signal);
+    // The directory scan is already durable at this point. Metadata has its
+    // own cancellation lifecycle and must not be aborted when the scan
+    // controller is released or reused.
+    enqueueMetadataJob(toAdd);
   }
 
   // 8b. 对更新的文件也重新执行分类（支持多标签）
   if (toUpdate.length > 0 && !signal.aborted) {
     try {
-      const rules = await db.select().from(classificationRules) as import('../../../shared/types/sample.types').ClassificationRule[];
-      const BATCH = 500;
-      const updateStmt = sqlite.prepare('UPDATE samples SET category_id = ? WHERE file_path = ?');
-      const deleteTagsStmt = sqlite.prepare('DELETE FROM sample_categories WHERE sample_id = (SELECT id FROM samples WHERE file_path = ?)');
-      const insertTagStmt = sqlite.prepare('INSERT OR IGNORE INTO sample_categories (sample_id, category_id, is_primary) VALUES ((SELECT id FROM samples WHERE file_path = ?), ?, ?)');
-      
-      let batchCount = 0;
-      sqlite.exec('BEGIN TRANSACTION');
-      for (const file of toUpdate) {
-        if (signal.aborted) break;
-        const result = classifySample(file.name, file.path, rules);
-        
-        updateStmt.run(result.primary, file.path);
-        deleteTagsStmt.run(file.path);
-        insertTagStmt.run(file.path, result.primary, 1);
-        for (const catId of result.secondary) {
-          insertTagStmt.run(file.path, catId, 0);
-        }
-        
-        batchCount++;
-        if (batchCount >= BATCH) {
-          sqlite.exec('COMMIT');
-          sqlite.exec('BEGIN TRANSACTION');
-          batchCount = 0;
-        }
-      }
-      if (batchCount > 0) sqlite.exec('COMMIT');
+      const rules = await db.select().from(classificationRules) as ClassificationRule[];
+      classifyFilesInTransactions(toUpdate, rules, sqlite, signal);
     } catch (classifyErr) {
       console.error('[Scan] Re-classify updated files failed:', classifyErr);
     }

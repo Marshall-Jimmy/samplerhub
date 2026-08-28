@@ -45,27 +45,11 @@ const App: React.FC = () => {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [onboardingChecked, setOnboardingChecked] = useState(false);
 
-  // 启动加载流程：预加载采样数据 + Mod 初始化
+  // Backend handlers are registered before the renderer is loaded, so the UI
+  // can become interactive immediately without fixed startup sleeps.
   useEffect(() => {
-    // 在后台延迟初始化 ModLoader
     initModLoader();
-
-    // 延迟预加载采样数据，避免与启动时的其他 IPC 请求冲突
-    // 延迟到 4 秒后执行，确保启动流程已完成
-    const prefetchTimer = setTimeout(() => {
-      queryClient.prefetchQuery({
-        queryKey: ['samples', { query: '', categoryId: undefined, tagIds: [], key: '', bpmMin: 0, bpmMax: 300, durationMin: 0, durationMax: 60, sortField: 'fileName', sortDirection: 'asc' }, 'all', null, false],
-        queryFn: () => ipcClient.searchSamples({ query: '', categoryId: undefined, tagIds: [], key: '', bpmMin: 0, bpmMax: 300, durationMin: 0, durationMax: 60, sortField: 'fileName', sortDirection: 'asc' }),
-        staleTime: 5 * 60 * 1000,
-      });
-    }, 4000);
-
-    // 确保加载动画至少显示 600ms，避免闪烁
-    const minTimer = setTimeout(() => {
-      setIsReady(true);
-    }, 600);
-
-    return () => clearTimeout(minTimer);
+    setIsReady(true);
   }, []);
 
   // Onboarding 检测：已完成 → 跳过；DB 有数据 → 跳过；否则显示引导
@@ -79,15 +63,10 @@ const App: React.FC = () => {
         return;
       }
 
-      // 检查 DB 中是否有样本数据（老用户直接跳过）
-      // 延迟 2 秒执行，避免与启动时的其他 IPC 请求冲突
-      await new Promise(r => setTimeout(r, 2000));
+      // A one-row paginated query avoids loading the library merely to decide
+      // whether onboarding is needed.
       try {
-        const result = await ipcClient.searchSamples({
-          query: '', categoryId: undefined, tagIds: [], key: '',
-          bpmMin: 0, bpmMax: 300, durationMin: 0, durationMax: 60,
-          sortField: 'fileName', sortDirection: 'asc',
-        });
+        const result = await ipcClient.getSamplesPaginated(0, 1);
         if (result.total > 0) {
           // 有数据的老用户，标记完成并跳过
           useSettingsStore.getState().setHasCompletedOnboarding(true);

@@ -111,21 +111,10 @@ function LoopWaveform({ trackId, engineRef, isPlaying, accentColor }: {
 // 通过 Electron 读取本地音频文件为 ArrayBuffer
 async function readLocalAudioFile(filePath: string): Promise<ArrayBuffer | null> {
   try {
-    const result = await window.electronAPI.invoke('fs:readFile', { filePath }) as { success: boolean; data?: unknown; error?: string };
-    if (result.success && result.data) {
-      return result.data as ArrayBuffer;
-    }
+    return await ipcClient.getAudioBuffer(filePath);
   } catch {
-    try {
-      // 使用 IPC 读取音频文件，避免 file:// URL 特殊字符问题
-      const buffer = await ipcClient.getAudioBuffer(filePath);
-      if (buffer) return buffer;
-      return null;
-    } catch {
-      return null;
-    }
+    return null;
   }
-  return null;
 }
 
 const BASE_GRID_COLS = 32;
@@ -338,33 +327,13 @@ const SequencerPage: React.FC = () => {
 
   const handleSavePattern = useCallback(async () => {
     const patternJson = exportPattern();
-    const { dialog } = await import('electron');
-    const result = await dialog.showSaveDialog({
-      title: 'Save Pattern',
-      defaultPath: 'pattern.json',
-      filters: [{ name: 'JSON', extensions: ['json'] }],
-    });
-    if (!result.canceled && result.filePath) {
-      await window.electronAPI.invoke('fs:writeFile', {
-        filePath: result.filePath,
-        data: patternJson,
-      });
-    }
+    await ipcClient.saveSequencerPattern(patternJson);
   }, [exportPattern]);
 
   const handleLoadPattern = useCallback(async () => {
-    const { dialog } = await import('electron');
-    const result = await dialog.showOpenDialog({
-      title: 'Load Pattern',
-      filters: [{ name: 'JSON', extensions: ['json'] }],
-      properties: ['openFile'],
-    });
-    if (!result.canceled && result.filePaths.length > 0) {
-      const filePath = result.filePaths[0];
-      const response = await window.electronAPI.invoke('fs:readFile', { filePath }) as { success: boolean; data?: string };
-      if (response.success && response.data) {
-        importPattern(response.data);
-      }
+    const result = await ipcClient.loadSequencerPattern();
+    if (result) {
+      importPattern(result.patternJson);
     }
   }, [importPattern]);
 

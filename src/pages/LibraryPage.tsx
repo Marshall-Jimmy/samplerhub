@@ -47,6 +47,7 @@ import SearchPanel from '../components/search/SearchPanel';
 import { useContextMenu, type ContextMenuItem } from '../components/common/ContextMenu';
 import EmptyState from '../components/common/EmptyState';
 import SampleListSkeleton from '../components/common/SampleListSkeleton';
+import { getNativeDragSampleIds } from '../utils/nativeDrag';
 import s from '../styles/components/library-page.module.css';
 
 function useDebounce<T>(value: T, delay: number): T {
@@ -137,14 +138,6 @@ const LibraryPage: React.FC = () => {
 
   const PAGE_SIZE = 50;
 
-  const [isPageReady, setIsPageReady] = useState(false);
-
-  // 延迟启用查询，避免启动时与 App.tsx 的 onboarding 检测冲突
-  useEffect(() => {
-    const timer = setTimeout(() => setIsPageReady(true), 500);
-    return () => clearTimeout(timer);
-  }, []);
-
   const { data: searchResult, isLoading } = useQuery({
     queryKey: ['samples', cleanFilters, activeSection, activeSmartFolderId, isSemanticSearch],
     queryFn: async () => {
@@ -172,7 +165,6 @@ const LibraryPage: React.FC = () => {
       }
       return ipcClient.searchSamples(cleanFilters);
     },
-    enabled: isPageReady,
   });
 
   const { data: categories } = useQuery({
@@ -236,6 +228,18 @@ const LibraryPage: React.FC = () => {
   }, [isPlaylistView, playlistItems]);
 
   const displaySamples = isPlaylistView ? playlistSamples : samples;
+  const visibleSampleIds = useMemo(() => displaySamples.map((sample) => sample.id), [displaySamples]);
+
+  const handleNativeDragStart = useCallback((sampleId: number) => {
+    ipcClient.startSampleDrag(getNativeDragSampleIds(sampleId, selectedIds, visibleSampleIds));
+  }, [selectedIds, visibleSampleIds]);
+
+  const handleSelectedNativeDragStart = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const selectedSampleIds = visibleSampleIds.filter((id) => selectedIds.has(id));
+    if (selectedSampleIds.length > 0) ipcClient.startSampleDrag(selectedSampleIds);
+  }, [selectedIds, visibleSampleIds]);
 
   // 构建面包屑路径
   const breadcrumbItems = useMemo<{ label: string; onClick: () => void }[]>(() => {
@@ -601,7 +605,6 @@ const LibraryPage: React.FC = () => {
       { key: 'divider1', label: '', divider: true, onClick: () => {} },
       { key: 'open-folder', label: t('contextMenu.openInExplorer'), icon: <FolderOpenOutlined />, onClick: () => { ipcClient.showItemInFolder(sample.filePath); } },
       { key: 'copy-path', label: t('contextMenu.copyPath'), icon: <CopyOutlined />, shortcut: 'Ctrl+Shift+C', onClick: () => { navigator.clipboard.writeText(sample.filePath); } },
-      { key: 'drag-daw', label: t('contextMenu.dragToDAW'), icon: <DesktopOutlined />, onClick: () => { ipcClient.startDrag([sample.filePath]); } },
       { key: 'divider2', label: '', divider: true, onClick: () => {} },
       { key: 'add-to-playlist', label: t('contextMenu.addToPlaylist'), icon: <UnorderedListOutlined />, onClick: () => {
         const playlists = usePlaylistStore.getState().playlists;
@@ -677,43 +680,64 @@ const LibraryPage: React.FC = () => {
         aria-label={t('a11y.sampleItem') + ' ' + sample.fileName}
         style={{
           ...style,
+          display: 'flex',
+          alignItems: 'center',
           ...(isDragTarget ? { borderTop: '2px solid var(--brand-primary)' } : {}),
         }}
-        draggable={isPlaylistView}
-        onDragStart={() => isPlaylistView && handlePlaylistDragStart(index)}
         onDragOver={(e) => isPlaylistView && handlePlaylistDragOver(e, index)}
         onDrop={() => isPlaylistView && handlePlaylistDrop(index)}
-        onDragEnd={handlePlaylistDragEnd}
       >
-        <SampleCard
-          id={sample.id}
-          name={sample.fileName}
-          filePath={sample.filePath}
-          waveformData={sample.waveformData}
-          category={sample.category?.name || 'unknown'}
-          bpm={sample.bpm}
-          musicalKey={sample.key}
-          bitDepth={sample.bitRate ? `${sample.bitRate}-bit` : undefined}
-          sampleRate={sample.sampleRate ? `${(sample.sampleRate / 1000).toFixed(1)} kHz` : undefined}
-          fileSize={sample.fileSize ? `${(sample.fileSize / 1024 / 1024).toFixed(1)} MB` : undefined}
-          duration={sample.duration}
-          fileType={sample.fileType}
-          isFavorite={sample.isFavorite}
-          isFocused={focusedIndex === index}
-          isSelected={selectedIds.has(sample.id)}
-          isMultiSelectMode={isMultiSelectMode}
-          index={index}
-          isCorrupted={sample.isCorrupted}
-          tagIds={sample.tags?.map((t: { id: number }) => t.id) || []}
-          onPlay={handlePlay}
-          onFavorite={handleFavorite}
-          onSelect={handleSelect}
-          onContextMenu={(e, _id) => handleSampleContextMenu(e, sample)}
-          searchQuery={debouncedQuery}
-        />
+        {isPlaylistView && (
+          <div
+            draggable
+            role="button"
+            tabIndex={0}
+            aria-label={t('library.dragToReorder', 'Drag to reorder')}
+            title={t('library.dragToReorder', 'Drag to reorder')}
+            onDragStart={(e) => {
+              e.stopPropagation();
+              e.dataTransfer.effectAllowed = 'move';
+              e.dataTransfer.setData('application/x-samplerhub-playlist-index', String(index));
+              handlePlaylistDragStart(index);
+            }}
+            onDragEnd={handlePlaylistDragEnd}
+            style={{ width: 18, flexShrink: 0, cursor: 'grab', userSelect: 'none', opacity: 0.55, textAlign: 'center' }}
+          >
+            ⋮⋮
+          </div>
+        )}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <SampleCard
+            id={sample.id}
+            name={sample.fileName}
+            filePath={sample.filePath}
+            waveformData={sample.waveformData}
+            category={sample.category?.name || 'unknown'}
+            bpm={sample.bpm}
+            musicalKey={sample.key}
+            bitDepth={sample.bitRate ? `${sample.bitRate}-bit` : undefined}
+            sampleRate={sample.sampleRate ? `${(sample.sampleRate / 1000).toFixed(1)} kHz` : undefined}
+            fileSize={sample.fileSize ? `${(sample.fileSize / 1024 / 1024).toFixed(1)} MB` : undefined}
+            duration={sample.duration}
+            fileType={sample.fileType}
+            isFavorite={sample.isFavorite}
+            isFocused={focusedIndex === index}
+            isSelected={selectedIds.has(sample.id)}
+            isMultiSelectMode={isMultiSelectMode}
+            index={index}
+            isCorrupted={sample.isCorrupted}
+            tagIds={sample.tags?.map((t: { id: number }) => t.id) || []}
+            onPlay={handlePlay}
+            onFavorite={handleFavorite}
+            onSelect={handleSelect}
+            onContextMenu={(e, _id) => handleSampleContextMenu(e, sample)}
+            onNativeDragStart={handleNativeDragStart}
+            searchQuery={debouncedQuery}
+          />
+        </div>
       </div>
     );
-  }, [displaySamples, focusedIndex, selectedIds, isMultiSelectMode, handlePlay, handleFavorite, handleSelect, handleSampleContextMenu, debouncedQuery, isPlaylistView, dragIndex, dragOverIndex, handlePlaylistDragStart, handlePlaylistDragOver, handlePlaylistDrop, handlePlaylistDragEnd]);
+  }, [displaySamples, focusedIndex, selectedIds, isMultiSelectMode, handlePlay, handleFavorite, handleSelect, handleSampleContextMenu, handleNativeDragStart, debouncedQuery, isPlaylistView, dragIndex, dragOverIndex, handlePlaylistDragStart, handlePlaylistDragOver, handlePlaylistDrop, handlePlaylistDragEnd, t]);
 
   useEffect(() => {
     listRef.current?.scrollTo(0);
@@ -1120,7 +1144,7 @@ const LibraryPage: React.FC = () => {
                     const sample = displaySamples[idx];
                     return (
                       <div style={{ ...style, padding: '0 6px 12px' }}>
-                        <GridSampleCard sample={sample} isSelected={selectedIds.has(sample.id)} isMultiSelectMode={isMultiSelectMode} index={idx} onPlay={handlePlay} onFavorite={handleFavorite} onSelect={handleSelect} onContextMenu={handleSampleContextMenu} />
+                        <GridSampleCard sample={sample} isSelected={selectedIds.has(sample.id)} isMultiSelectMode={isMultiSelectMode} index={idx} onPlay={handlePlay} onFavorite={handleFavorite} onSelect={handleSelect} onContextMenu={handleSampleContextMenu} onNativeDragStart={handleNativeDragStart} />
                       </div>
                     );
                   };
@@ -1143,7 +1167,7 @@ const LibraryPage: React.FC = () => {
                       const sample = displaySamples[index];
                       return (
                         <div style={style}>
-                          <WaveformSampleRow sample={sample} currentTime={currentSampleId === sample.id ? currentTime : 0} isSelected={selectedIds.has(sample.id)} isMultiSelectMode={isMultiSelectMode} index={index} onPlay={handlePlay} onFavorite={handleFavorite} onSelect={handleSelect} onSeek={handleSeek} onContextMenu={handleSampleContextMenu} />
+                          <WaveformSampleRow sample={sample} currentTime={currentSampleId === sample.id ? currentTime : 0} isSelected={selectedIds.has(sample.id)} isMultiSelectMode={isMultiSelectMode} index={index} onPlay={handlePlay} onFavorite={handleFavorite} onSelect={handleSelect} onSeek={handleSeek} onContextMenu={handleSampleContextMenu} onNativeDragStart={handleNativeDragStart} />
                         </div>
                       );
                     }}
@@ -1251,12 +1275,9 @@ const LibraryPage: React.FC = () => {
               <Button size="small" icon={<CopyOutlined />} onClick={handleBatchExport}>{t('library.export')}</Button>
 
               {/* 拖拽到 DAW */}
-              <Button size="small" icon={<DesktopOutlined />} onClick={() => {
-                const paths = displaySamples
-                  ?.filter(s => selectedIds.has(s.id))
-                  .map(s => s.filePath) ?? [];
-                if (paths.length > 0) ipcClient.startDrag(paths);
-              }}>{t('library.batch.dragToDAW')}</Button>
+              <Button size="small" icon={<DesktopOutlined />} draggable onDragStart={handleSelectedNativeDragStart}>
+                {t('library.batch.dragToDAW')}
+              </Button>
 
               {/* 删除 */}
               <Button size="small" danger icon={<DeleteOutlined />} onClick={handleBatchDelete}>{t('library.delete')}</Button>

@@ -16,8 +16,8 @@ const Update = () => {
     onCancel?: () => void
     onOk?: () => void
   }>({
-    onCancel: () => window.ipcRenderer.invoke('cancel-download').then(() => setModalOpen(false)),
-    onOk: () => window.ipcRenderer.invoke('start-download'),
+    onCancel: () => window.electronAPI.invoke('cancel-download').then(() => setModalOpen(false)),
+    onOk: () => window.electronAPI.invoke('start-download'),
   })
 
   const checkUpdate = async () => {
@@ -25,7 +25,7 @@ const Update = () => {
     /**
      * @type {import('electron-updater').UpdateCheckResult | null | { message: string, error: Error }}
      */
-    const result = await window.ipcRenderer.invoke('check-update')
+    const result = await window.electronAPI.invoke('check-update')
     setProgressInfo({ percent: 0 })
     setChecking(false)
     setModalOpen(true)
@@ -36,7 +36,7 @@ const Update = () => {
   }
 
   const onUpdateCanAvailable = useCallback(
-    (_event: Electron.IpcRendererEvent, arg1: VersionInfo) => {
+    (arg1: VersionInfo) => {
       setVersionInfo(arg1)
       setUpdateError(undefined)
       // Can be update
@@ -45,7 +45,7 @@ const Update = () => {
           ...state,
           cancelText: 'Cancel',
           okText: 'Update',
-          onOk: () => window.ipcRenderer.invoke('start-download'),
+          onOk: () => window.electronAPI.invoke('start-download'),
         }))
         setUpdateAvailable(true)
       } else {
@@ -55,42 +55,42 @@ const Update = () => {
     [],
   )
 
-  const onUpdateError = useCallback((_event: Electron.IpcRendererEvent, arg1: ErrorType) => {
+  const onUpdateError = useCallback((arg1: ErrorType) => {
     setUpdateAvailable(false)
     setUpdateError(arg1)
   }, [])
 
   const onDownloadProgress = useCallback(
-    (_event: Electron.IpcRendererEvent, arg1: ProgressInfo) => {
+    (arg1: ProgressInfo) => {
       setProgressInfo(arg1)
     },
     [],
   )
 
-  const onUpdateDownloaded = useCallback((_event: Electron.IpcRendererEvent, ...args: any[]) => {
+  const onUpdateDownloaded = useCallback(() => {
     setProgressInfo({ percent: 100 })
     setModalBtn((state) => ({
       ...state,
       cancelText: 'Later',
       okText: 'Install now',
-      onOk: () => window.ipcRenderer.invoke('quit-and-install'),
+      onOk: () => window.electronAPI.invoke('quit-and-install'),
     }))
   }, [])
 
   useEffect(() => {
     // Get version information and whether to update
-    window.ipcRenderer.on('update-can-available', onUpdateCanAvailable)
-    window.ipcRenderer.on('update-error', onUpdateError)
-    window.ipcRenderer.on('download-progress', onDownloadProgress)
-    window.ipcRenderer.on('update-downloaded', onUpdateDownloaded)
+    const unsubAvailable = window.electronAPI.on('update-can-available', onUpdateCanAvailable)
+    const unsubError = window.electronAPI.on('update-error', onUpdateError)
+    const unsubProgress = window.electronAPI.on('download-progress', onDownloadProgress)
+    const unsubDownloaded = window.electronAPI.on('update-downloaded', onUpdateDownloaded)
 
     return () => {
-      window.ipcRenderer.off('update-can-available', onUpdateCanAvailable)
-      window.ipcRenderer.off('update-error', onUpdateError)
-      window.ipcRenderer.off('download-progress', onDownloadProgress)
-      window.ipcRenderer.off('update-downloaded', onUpdateDownloaded)
+      unsubAvailable()
+      unsubError()
+      unsubProgress()
+      unsubDownloaded()
     }
-  }, [])
+  }, [onDownloadProgress, onUpdateCanAvailable, onUpdateDownloaded, onUpdateError])
 
   return (
     <>

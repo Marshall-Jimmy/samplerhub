@@ -18,6 +18,7 @@ interface GridSampleCardProps {
   onFavorite: (id: number) => void;
   onSelect: (id: number, index: number, e: React.MouseEvent) => void;
   onContextMenu?: (e: React.MouseEvent, sample: Sample) => void;
+  onNativeDragStart?: (id: number) => void;
 }
 
 const GridSampleCard: React.FC<GridSampleCardProps> = ({
@@ -30,6 +31,7 @@ const GridSampleCard: React.FC<GridSampleCardProps> = ({
   onFavorite,
   onSelect,
   onContextMenu,
+  onNativeDragStart,
 }) => {
   const isPlaying = usePlayerStore(s => s.currentSampleId === sample.id && s.isPlaying);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -70,43 +72,12 @@ const GridSampleCard: React.FC<GridSampleCardProps> = ({
   }, [isVisible, sample.id, sample.waveformData, accentColor, isPlaying, waveformVersion]);
 
   const handleDragStart = useCallback((e: React.DragEvent) => {
-    e.dataTransfer.setData('text/x-file-path', sample.filePath);
-    e.dataTransfer.effectAllowed = 'copy';
-    // Custom drag image: audio file icon
-    const canvas = document.createElement('canvas');
-    canvas.width = 140;
-    canvas.height = 40;
-    // Must append to DOM for setDragImage to work reliably in Electron
-    canvas.style.position = 'fixed';
-    canvas.style.top = '-9999px';
-    canvas.style.left = '-9999px';
-    document.body.appendChild(canvas);
-    const ctx = canvas.getContext('2d');
-    if (ctx) {
-      ctx.fillStyle = '#1E1E2E';
-      ctx.beginPath();
-      ctx.roundRect(0, 0, 140, 40, 8);
-      ctx.fill();
-      ctx.fillStyle = accentColor;
-      ctx.beginPath();
-      ctx.roundRect(0, 0, 4, 40, [8, 0, 0, 8]);
-      ctx.fill();
-      ctx.fillStyle = '#fff';
-      ctx.font = 'bold 14px system-ui, sans-serif';
-      ctx.fillText('🎵', 14, 26);
-      ctx.fillStyle = 'rgba(255,255,255,0.9)';
-      ctx.font = '12px system-ui, sans-serif';
-      const name = sample.fileName.replace(/\.[^/.]+$/, '');
-      ctx.fillText(name.length > 12 ? name.slice(0, 12) + '…' : name, 38, 26);
-      e.dataTransfer.setDragImage(canvas, 70, 20);
-    }
-    // Clean up after drag starts
-    requestAnimationFrame(() => {
-      if (canvas.parentNode) document.body.removeChild(canvas);
-    });
-    window.electronAPI.send('drag:start', { filePath: sample.filePath, name: sample.fileName });
+    e.preventDefault();
+    e.stopPropagation();
+    if (sample.fileType !== 'audio') return;
+    onNativeDragStart?.(sample.id);
     setIsDragging(true);
-  }, [sample.filePath, sample.fileName, accentColor]);
+  }, [sample.fileType, sample.id, onNativeDragStart]);
 
   const handleDragEnd = useCallback(() => setIsDragging(false), []);
 
@@ -121,7 +92,7 @@ const GridSampleCard: React.FC<GridSampleCardProps> = ({
   return (
     <div
       ref={containerRef}
-      draggable
+      draggable={sample.fileType === 'audio' && !!onNativeDragStart}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
       onClick={handleClick}

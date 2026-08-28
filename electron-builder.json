@@ -34,7 +34,6 @@
       ]
     }
   ],
-  "electronDist": "electron-dist",
   "mac": {
     "icon": "build/icon.icns",
     "artifactName": "${productName}_${version}.${ext}",

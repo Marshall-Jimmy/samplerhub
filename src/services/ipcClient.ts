@@ -140,6 +140,10 @@ export const ipcClient = {
     steps: boolean[];
     velocity: number;
   }>, bpm: number, timeSignature?: string) => invoke<{ filePath: string }>(IPC_CHANNELS.EXPORT_SEQUENCER_MIDI, { tracks, bpm, timeSignature }),
+  saveSequencerPattern: (patternJson: string) =>
+    invoke<{ filePath: string } | null>(IPC_CHANNELS.SAVE_SEQUENCER_PATTERN, { patternJson }),
+  loadSequencerPattern: () =>
+    invoke<{ patternJson: string; filePath: string } | null>(IPC_CHANNELS.LOAD_SEQUENCER_PATTERN),
 
   // 音频分析
   analyzeAudioFile: (filePath: string) => invoke<{ bpm: number | null; key: string | null; pitch: number | null; loudness: number | null; confidence: number }>(IPC_CHANNELS.AUDIO_ANALYZE_FILE, filePath),
@@ -178,13 +182,9 @@ export const ipcClient = {
     };
   }>(IPC_CHANNELS.GET_MIDI_PREVIEW, { filePath }),
 
-  // 拖拽到 DAW（支持多文件）
-  startDrag: (filePaths: string[]) => {
-    if (filePaths.length === 1) {
-      window.electronAPI.send('drag:start', { filePath: filePaths[0], name: filePaths[0] });
-    } else {
-      window.electronAPI.send('drag:start', { filePath: filePaths[0], name: `${filePaths.length} files`, filePaths });
-    }
+  // 拖拽到 DAW：renderer 只传 sample ID，文件路径由主进程解析和验证。
+  startSampleDrag: (sampleIds: number[]) => {
+    window.electronAPI.send('drag:start', { sampleIds });
   },
 
   // 在文件管理器中显示

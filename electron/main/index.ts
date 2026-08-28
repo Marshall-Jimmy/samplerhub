@@ -38,13 +38,16 @@ if (typeof globalThis.__filename === 'undefined') (globalThis as any).__filename
 if (typeof globalThis.__dirname === 'undefined') (globalThis as any).__dirname = _dirname
 import { registerIpcHandlers, registerWindowHandlers, setToolWindowsMap, setWindowCreators } from './services/ipcHandlers'
 import { startWatchingAllFolders, stopAllWatchers } from './services/fileWatcher'
-import { startAutoBackup, stopAutoBackup, getSqlite } from './services/database'
+import { startAutoBackup, stopAutoBackup, getSqlite, closeDatabase } from './services/database'
 import { seedUcsTaxonomy } from './services/ucsTaxonomy'
 import { initAutoUpdater, stopAutoUpdater } from './services/updater'
 import { perfMonitor } from './services/performanceMonitor'
 import { initSentry } from './services/sentry'
 import { initEssentia, shutdownEssentia } from './services/audioAnalyzer'
 import { runPythonSetup } from './services/pythonSetup'
+import { abortScan, abortMetadataJob } from './services/fileScanner'
+import { analysisQueueManager } from './services/analysisQueue'
+import { analyzerSidecar } from './services/analyzerSidecar'
 
 // 配置日志
 log.transports.file.maxSize = 10 * 1024 * 1024 // 10MB
@@ -304,10 +307,9 @@ function createWindow() {
   })
 
   win.webContents.on('did-finish-load', () => {
-    win?.webContents.send('main-process-message', (new Date).toLocaleString())
 
     // 记录页面加载时间
-    perfMonitor.recordMetric('pageLoad', Date.now() - perfMonitor.getStartupTime())
+    perfMonitor.recordMetric('pageLoad', perfMonitor.getStartupTime())
 
     // 初始化自动更新
     if (app.isPackaged) {
@@ -477,10 +479,15 @@ app.on('window-all-closed', () => {
 
 // 退出时完整清理资源（无论通过何种方式退出）
 app.on('will-quit', () => {
+  try { abortScan() } catch {}
+  try { abortMetadataJob() } catch {}
+  try { analysisQueueManager.shutdown() } catch {}
+  try { analyzerSidecar.stopImmediately() } catch {}
   try { stopAllWatchers() } catch {}
   try { stopAutoBackup() } catch {}
   try { stopAutoUpdater() } catch {}
   try { shutdownEssentia() } catch {}
+  try { closeDatabase() } catch {}
 })
 
 app.on('activate', () => {
@@ -495,20 +502,35 @@ app.whenReady().then(async () => {
     // 注册自定义协议处理本地音频文件（避免 file:// URL 中 # 等特殊字符的问题）
     // 安全策略：只允许访问用户配置的监控文件夹内的音频文件
     protocol.handle('local-audio', async (request) => {
-      // 从 URL 中提取文件路径（不能用 new URL() 因为 # 会被截断）
-      // local-audio:///<absolute-path>
-      const rawUrl = request.url
-      // 去掉协议前缀，得到路径部分
-      const pathPart = rawUrl.slice('local-audio:///'.length)
-      const requestedPath = decodeURIComponent(pathPart)
+      // Parse the encoded pathname so Windows drive paths, UNC paths and
+      // POSIX absolute paths all retain their platform-specific root.
+      let requestedPath: string
+      try {
+        const parsedUrl = new URL(request.url)
+        const decodedPath = decodeURIComponent(parsedUrl.pathname)
+        if (process.platform === 'win32') {
+          requestedPath = parsedUrl.hostname
+            ? `\\\\${parsedUrl.hostname}${decodedPath.replace(/\//g, '\\')}`
+            : decodedPath.replace(/^\/([a-zA-Z]:)/, '$1').replace(/\//g, '\\')
+        } else {
+          requestedPath = decodedPath
+        }
+      } catch {
+        return new Response('Bad request: invalid encoded path', { status: 400 })
+      }
 
-      // 路径归一化，防止路径遍历攻击
-      const normalizedPath = path.normalize(requestedPath)
+      if (!path.isAbsolute(requestedPath)) {
+        return new Response('Bad request: an absolute path is required', { status: 400 })
+      }
 
-      // 拒绝包含 .. 的路径遍历尝试
-      if (normalizedPath.includes('..')) {
-        console.warn('[local-audio] Path traversal blocked:', requestedPath)
-        return new Response('Forbidden: path traversal detected', { status: 403 })
+      let realRequestedPath: string
+      try {
+        realRequestedPath = await fs.promises.realpath(requestedPath)
+        if (!(await fs.promises.stat(realRequestedPath)).isFile()) {
+          return new Response('Not found', { status: 404 })
+        }
+      } catch {
+        return new Response('Not found', { status: 404 })
       }
 
       // 从数据库读取用户配置的监控文件夹作为白名单
@@ -516,21 +538,27 @@ app.whenReady().then(async () => {
       const db = getDatabase()
       const { watchedFolders } = await import('../../drizzle/schema')
       const folders = db.select().from(watchedFolders).all()
-      const allowedRoots = folders.map((f: { path: string }) => path.normalize(f.path))
-
-      // 检查请求路径是否在白名单目录下
-      const isAllowed = allowedRoots.some((root: string) => {
-        const normalizedRoot = path.normalize(root)
-        // Windows 路径不区分大小写
-        return normalizedPath.toLowerCase().startsWith(normalizedRoot.toLowerCase())
-      })
+      const allowedChecks = await Promise.all(folders.map(async (folder: { path: string }) => {
+        try {
+          const realRoot = await fs.promises.realpath(folder.path)
+          const relative = path.relative(realRoot, realRequestedPath)
+          return relative === '' || (
+            relative !== '..' &&
+            !relative.startsWith(`..${path.sep}`) &&
+            !path.isAbsolute(relative)
+          )
+        } catch {
+          return false
+        }
+      }))
+      const isAllowed = allowedChecks.some(Boolean)
 
       if (!isAllowed) {
         console.warn('[local-audio] Access denied, not in whitelist:', requestedPath)
         return new Response('Forbidden: path not in library whitelist', { status: 403 })
       }
 
-      return net.fetch(`file:///${normalizedPath.replace(/\\/g, '/')}`)
+      return net.fetch(pathToFileURL(realRequestedPath).toString())
     })
 
     // 注册 online-preview 协议（代理在线采样预览音频，绕过 CORS）
@@ -539,6 +567,19 @@ app.whenReady().then(async () => {
     registerOnlinePreviewProtocol()
 
     createSplash()
+
+    // Register every data IPC handler before the renderer is loaded. This
+    // removes the intermittent "No handler registered" startup race while the
+    // splash remains responsive during a one-time migration.
+    const initStart = Date.now()
+    await registerIpcHandlers()
+    try {
+      seedUcsTaxonomy(getSqlite())
+    } catch (err) {
+      console.error('[UCS] Seed failed:', err)
+    }
+    perfMonitor.recordMetric('databaseInit', Date.now() - initStart)
+
     createWindow()
     createTray()
     // 注册窗口控制 IPC（包括工具窗口创建）
@@ -551,75 +592,63 @@ app.whenReady().then(async () => {
       registerWindowHandlers(win)
     }
 
-    // 延迟初始化数据库和文件监控，不阻塞窗口创建
-    setImmediate(async () => {
-      const initStart = Date.now()
-      await registerIpcHandlers()
-      // 初始化 UCS 分类数据（在数据库初始化完成后）
-      try {
-        seedUcsTaxonomy(getSqlite())
-      } catch (err) {
-        console.error('[UCS] Seed failed:', err)
+    // 注册窗口控制 IPC（最小化到托盘 / 强制退出）
+    ipcMain.on('window:minimize-to-tray', () => {
+      if (win && !win.isDestroyed()) {
+        win.hide()
       }
-      // 注册窗口控制 IPC（最小化到托盘 / 强制退出）
-      ipcMain.on('window:minimize-to-tray', () => {
-        if (win && !win.isDestroyed()) {
-          win.hide()
-        }
+    })
+    ipcMain.on('window:force-quit', () => {
+      isQuitting = true
+      app.quit()
+    })
+    startAutoBackup()
+
+    // 延迟 15 秒再启动文件监控，让窗口先完成加载、UI 先响应
+    setTimeout(() => {
+      startWatchingAllFolders().catch(err => {
+        console.warn('[Watcher] Failed to start file watchers:', err)
       })
-      ipcMain.on('window:force-quit', () => {
-        isQuitting = true
-        app.quit()
-      })
-      perfMonitor.recordMetric('databaseInit', Date.now() - initStart)
-      startAutoBackup()
+    }, 15000)
 
-      // 延迟 15 秒再启动文件监控，让窗口先完成加载、UI 先响应
-      setTimeout(() => {
-        startWatchingAllFolders().catch(err => {
-          console.warn('[Watcher] Failed to start file watchers:', err)
-        })
-      }, 15000)
+    // 异步初始化 essentia.js WASM（不阻塞其他初始化）
+    initEssentia().catch(err => {
+      log.warn('[AudioAnalyzer] essentia.js init failed, audio analysis will be unavailable:', err)
+    })
 
-      // 异步初始化 essentia.js WASM（不阻塞其他初始化）
-      initEssentia().catch(err => {
-        log.warn('[AudioAnalyzer] essentia.js init failed, audio analysis will be unavailable:', err)
-      })
+    // 延迟 5 秒再启动 Python 相关后台任务，避免与 UI 初始化抢资源
+    setTimeout(() => {
+      // 异步检测 Python 环境并安装依赖（不阻塞）
+      import('./services/pythonSetup').then(({ runPythonSetup }) => {
+        runPythonSetup((msg) => {
+          log.info(`[PythonSetup] ${msg}`)
+        }).then(result => {
+          if (result.success) {
+            log.info('[PythonSetup] Python environment ready')
+          } else {
+            log.warn('[PythonSetup] Python setup failed:', result.error)
+          }
 
-      // 延迟 5 秒再启动 Python 相关后台任务，避免与 UI 初始化抢资源
-      setTimeout(() => {
-        // 异步检测 Python 环境并安装依赖（不阻塞）
-        import('./services/pythonSetup').then(({ runPythonSetup }) => {
-          runPythonSetup((msg) => {
-            log.info(`[PythonSetup] ${msg}`)
-          }).then(result => {
-            if (result.success) {
-              log.info('[PythonSetup] Python environment ready')
-            } else {
-              log.warn('[PythonSetup] Python setup failed:', result.error)
-            }
-
-            // Python 环境准备好后，启动 sidecar
-            import('./services/analyzerSidecar').then(({ analyzerSidecar }) => {
-              analyzerSidecar.start().then(ok => {
-                if (ok) {
-                  log.info('[Sidecar] Analyzer sidecar started successfully')
-                } else {
-                  log.warn('[Sidecar] Analyzer sidecar not available, semantic search will be disabled')
-                }
-              }).catch(err => {
-                log.warn('[Sidecar] Failed to start analyzer sidecar:', err)
-              })
+          // Python 环境准备好后，启动 sidecar
+          import('./services/analyzerSidecar').then(({ analyzerSidecar }) => {
+            analyzerSidecar.start().then(ok => {
+              if (ok) {
+                log.info('[Sidecar] Analyzer sidecar started successfully')
+              } else {
+                log.warn('[Sidecar] Analyzer sidecar not available, semantic search will be disabled')
+              }
+            }).catch(err => {
+              log.warn('[Sidecar] Failed to start analyzer sidecar:', err)
             })
           })
         })
-      }, 5000)
+      })
+    }, 5000)
 
-      perfMonitor.recordMetric('dbWatcherBackupInit', Date.now() - initStart)
-      perfMonitor.recordMetric('appStartup', Date.now() - startTime)
-      log.info(`[Perf] DB + Watcher + Backup init: ${Date.now() - initStart}ms`)
-      log.info(`[Perf] App ready to show: ${Date.now() - startTime}ms`)
-    })
+    perfMonitor.recordMetric('dbWatcherBackupInit', Date.now() - initStart)
+    perfMonitor.recordMetric('appStartup', Date.now() - startTime)
+    log.info(`[Perf] DB + Watcher + Backup init: ${Date.now() - initStart}ms`)
+    log.info(`[Perf] App ready to show: ${Date.now() - startTime}ms`)
   } catch (err) {
     log.error('Failed to initialize app:', err)
     dialog.showErrorBox('Startup Error', (err as Error).message)

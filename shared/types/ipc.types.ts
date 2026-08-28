@@ -73,6 +73,8 @@ export const IPC_CHANNELS = {
   PARSE_MIDI: 'midi:parse',
   GET_MIDI_PREVIEW: 'midi:getPreview',
   EXPORT_SEQUENCER_MIDI: 'sequencer:exportMidi',
+  SAVE_SEQUENCER_PATTERN: 'sequencer:savePattern',
+  LOAD_SEQUENCER_PATTERN: 'sequencer:loadPattern',
 
   // 播放列表
   GET_PLAYLISTS: 'playlists:get',
