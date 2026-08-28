@@ -2,6 +2,7 @@
   "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
   "appId": "com.jima.samplerhub",
   "productName": "Jima's SamplerHub",
+  "executableName": "Jima SamplerHub",
   "copyright": "Copyright © 2024 Jima",
   "icon": "build/icon.ico",
   "asar": true,
